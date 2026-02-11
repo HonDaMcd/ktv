@@ -2,89 +2,88 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>過年 KTV 總部 - 終極穩定版</title>
+    <title>家庭 KTV 旗艦版</title>
     <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-database-compat.js"></script>
     <style>
-        body { background: #000; color: #fff; font-family: sans-serif; margin: 0; display: flex; height: 100vh; overflow: hidden; }
-        #main { flex: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
-        #sidebar { flex: 1; background: #111; border-left: 2px solid #333; padding: 20px; overflow-y: auto; }
-        #player-container { width: 90%; aspect-ratio: 16/9; background: #222; box-shadow: 0 0 30px rgba(255,0,0,0.2); }
-        .song-item { padding: 15px; border-bottom: 1px solid #222; color: #0f0; font-size: 1.2rem; }
-        #overlay { position: absolute; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.9); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; }
-        .btn { padding: 15px 30px; font-size: 20px; cursor: pointer; border-radius: 50px; border: none; margin: 10px; }
-        .btn-start { background: #ff0055; color: white; }
-        .btn-next { background: #444; color: white; }
-.song-item { 
-    padding: 20px; 
-    border-bottom: 2px solid #333; 
-    color: #00ff00; 
-    font-size: 2rem; /* 讓字體變超大 */
-    font-weight: bold;
-}
-#sidebar h2 {
-    font-size: 2.5rem;
-    text-align: center;
-}
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: sans-serif; }
+        
+        /* 影片全螢幕 */
+        #main { width: 100vw; height: 100vh; position: relative; }
+        #player { width: 100%; height: 100%; }
+
+        /* 標題浮動在上方 */
+        #title-bar { 
+            position: absolute; top: 0; width: 100%; 
+            background: rgba(0,0,0,0.5); color: #fff; 
+            padding: 15px; font-size: 1.5rem; text-align: center; z-index: 10;
+        }
+
+        /* 右側浮動清單：預設隱藏，有變動才浮現 */
+        #sidebar { 
+            position: absolute; right: -300px; top: 80px; width: 250px; 
+            background: rgba(0,0,0,0.8); color: #0f0; padding: 15px; 
+            border-radius: 15px 0 0 15px; transition: 0.5s; z-index: 5;
+        }
+        #sidebar.show { right: 0; }
+        .song-item { padding: 8px; border-bottom: 1px solid #333; list-style: none; font-size: 1.1rem; }
+
+        /* 控制按鈕：懸浮在底部 */
+        #controls { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 10; opacity: 0.3; transition: 0.5s; }
+        #controls:hover { opacity: 1; }
+        .btn-next { padding: 12px 30px; font-size: 1.2rem; cursor: pointer; border-radius: 30px; border: none; background: #ff0055; color: white; box-shadow: 0 0 15px rgba(255,0,85,0.5); }
+
+        #overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: #000; display: flex; justify-content: center; align-items: center; z-index: 100; }
     </style>
 </head>
 <body>
 
 <div id="overlay">
-    <h1 style="color: #ff0055; font-size: 3rem; margin-bottom: 30px;">🎤 KTV 準備就緒</h1>
-    <button class="btn btn-start" onclick="initKTV()">點擊開始新年歌友會</button>
+    <button style="padding: 20px 40px; font-size: 24px; cursor: pointer; border-radius: 10px;" onclick="initKTV()">🎤 點擊開啟 KTV 系統</button>
 </div>
 
 <div id="main">
-    <div id="player-container">
-        <div id="player"></div>
-    </div>
-    <div style="margin-top: 20px;">
-        <button class="btn btn-next" onclick="playNext()">⏭️ 切歌 / 下一首</button>
-        <button class="btn btn-next" style="background:#222" onclick="location.reload()">🔄 重新整理系統</button>
+    <div id="title-bar"><span id="title">🎤 準備點歌...</span></div>
+    <div id="player"></div>
+    <div id="controls">
+        <button class="btn-next" onclick="playNext()">⏭️ 切歌 / 下一首</button>
     </div>
 </div>
 
 <div id="sidebar">
-    <h2 style="color: #ff0055;">待播清單</h2>
-    <ul id="songList" style="padding: 0;"></ul>
+    <h3 style="margin: 0 0 10px 0; color: #ff0055;">待播清單</h3>
+    <ul id="songList" style="padding: 0; margin: 0;"></ul>
 </div>
 
+<script src="https://www.youtube.com/iframe_api"></script>
 <script>
+    // 請確認此 Config 與你的 Firebase 一致
     const firebaseConfig = {
-  apiKey: "AIzaSyB7FxIh0oUu21zTLxnhOttyN_kL0LiYAPw",
-  authDomain: "my-karaoke-5b9e3.firebaseapp.com",
-  databaseURL: "https://my-karaoke-5b9e3-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "my-karaoke-5b9e3",
-  storageBucket: "my-karaoke-5b9e3.firebasestorage.app",
-  messagingSenderId: "229614265706",
-  appId: "1:229614265706:web:06c5e2c498baa7f1b5f113",
-  measurementId: "G-1YVK3HE4VK"
-};
+      apiKey: "AIzaSyB7FxIh0oUu21zTLxnhOttyN_kL0LiYAPw",
+      authDomain: "my-karaoke-5b9e3.firebaseapp.com",
+      databaseURL: "https://my-karaoke-5b9e3-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "my-karaoke-5b9e3",
+      storageBucket: "my-karaoke-5b9e3.firebasestorage.app",
+      messagingSenderId: "229614265706",
+      appId: "1:229614265706:web:06c5e2c498baa7f1b5f113"
+    };
 
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
-
-    var player;
-    var currentSongs = [];
-    var playerIsReady = false;
-
-    // 載入 API
-    var tag = document.createElement('script');
-    tag.src = "https://www.youtube.com/iframe_api";
-    document.head.appendChild(tag);
+    var player, currentSongs = [], playerIsReady = false, sidebarTimer;
 
     function onYouTubeIframeAPIReady() {
         player = new YT.Player('player', {
-            height: '100%',
-            width: '100%',
+            height: '100%', width: '100%',
             playerVars: { 'autoplay': 1, 'controls': 1, 'enablejsapi': 1 },
             events: {
                 'onReady': () => { playerIsReady = true; },
-                'onStateChange': (e) => { if(e.data == YT.PlayerState.ENDED) playNext(); },
-                'onError': (e) => { 
-                    console.log("Error:", e.data);
-                    // 只有在真的出錯時才跳下一首，不要自動一直跳
+                'onStateChange': (e) => {
+                    if (e.data == YT.PlayerState.PLAYING) {
+                        const realTitle = player.getVideoData().title;
+                        document.getElementById('title').innerText = "🎤 正在播放：" + (realTitle || "載入中...");
+                    }
+                    if (e.data == YT.PlayerState.ENDED) playNext();
                 }
             }
         });
@@ -92,59 +91,43 @@
 
     function initKTV() {
         document.getElementById('overlay').style.display = 'none';
-        
-        db.ref('playlist').on('value', (snapshot) => {
-            const data = snapshot.val();
+        db.ref('playlist').orderByChild('timestamp').on('value', (snapshot) => {
             const listUI = document.getElementById('songList');
+            const sidebar = document.getElementById('sidebar');
             listUI.innerHTML = '';
             currentSongs = [];
 
-            if (data) {
-                Object.keys(data).forEach(key => {
-                    currentSongs.push({ key: key, ...data[key] });
-                    const li = document.createElement('li');
-                    li.className = 'song-item';
-                    li.innerText = data[key].title;
-                    listUI.appendChild(li);
-                });
+            snapshot.forEach((childSnapshot) => {
+                const data = childSnapshot.val();
+                currentSongs.push({ key: childSnapshot.key, ...data });
+                const li = document.createElement('li');
+                li.className = 'song-item';
+                li.innerText = data.title;
+                listUI.appendChild(li);
+            });
 
-                // 如果目前是空閒狀態，嘗試播第一首
-                if (playerIsReady && player.getPlayerState() !== 1) {
-                    playFirstInQueue();
+            // 觸發清單滑動出現，5秒後消失
+            sidebar.classList.add('show');
+            clearTimeout(sidebarTimer);
+            sidebarTimer = setTimeout(() => sidebar.classList.remove('show'), 5000);
+
+            if (playerIsReady && currentSongs.length > 0) {
+                if (player.getPlayerState() !== 1 && player.getPlayerState() !== 3) {
+                    player.loadVideoById(currentSongs[0].ytId);
                 }
             }
         });
     }
 
-    function playFirstInQueue() {
-        if (currentSongs.length > 0) {
-            const next = currentSongs[0];
-            player.loadVideoById(next.ytId);
-            // 注意：這裡我們先不刪除資料庫，等真的播完了或按切歌再刪
-        }
-    }
-
     function playNext() {
         if (currentSongs.length > 0) {
-            // 1. 先把要刪除的那首歌（目前這首）紀錄下來
-            const finishedSong = currentSongs[0];
-            
-            // 2. 從資料庫刪除
-            db.ref('playlist/' + finishedSong.key).remove().then(() => {
-                console.log("已從資料庫移除：" + finishedSong.title);
-                
-                // 3. 檢查陣列裡是否有下一首歌 (原本的 index 1)
+            db.ref('playlist/' + currentSongs[0].key).remove().then(() => {
                 if (currentSongs.length > 1) {
-                    const nextVideo = currentSongs[1];
-                    console.log("強制切換至下一首：" + nextVideo.title);
-                    
-                    // 核心修正：強制停止目前的，立刻載入新的
-                    player.stopVideo(); 
-                    player.loadVideoById(nextVideo.ytId);
-                } else {
-                    // 如果沒歌了就停止
                     player.stopVideo();
-                    console.log("清單已空，停止播放");
+                    player.loadVideoById(currentSongs[1].ytId);
+                } else {
+                    player.stopVideo();
+                    document.getElementById('title').innerText = "🎤 清單已空";
                 }
             });
         }
