@@ -60,123 +60,76 @@
       appId: "1:229614265706:web:06c5e2c498baa7f1b5f113"
     };
 
+    // ... Firebase Config 保持不變 ...
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
     var player, currentSongs = [], playerIsReady = false, sidebarTimer;
 
-    // 1. YouTube API 準備就緒時觸發
     function onYouTubeIframeAPIReady() {
         player = new YT.Player('player', {
-            height: '100%',
-            width: '100%',
-            playerVars: { 
-                'autoplay': 1, 
-                'controls': 1, 
-                'rel': 0, 
-                'showinfo': 0,
-                'enablejsapi': 1
-                'mute': 1 
-            },
+            height: '100%', width: '100%',
+            playerVars: { 'autoplay': 1, 'controls': 1, 'enablejsapi': 1 },
             events: {
-                'onReady': onPlayerReady,
-                'onStateChange': onPlayerStateChange,
-                'onError': (e) => { console.log("YT Error:", e.data); playNext(); }
+                'onReady': () => { playerIsReady = true; },
+                'onStateChange': (e) => {
+                    if (e.data == YT.PlayerState.PLAYING) {
+                        const realTitle = player.getVideoData().title;
+                        document.getElementById('title').innerText = "🎤 正在播放：" + (realTitle || "載入中...");
+                    }
+                    if (e.data == YT.PlayerState.ENDED) playNext();
+                }
             }
         });
-    }
-
-    function onPlayerReady(event) {
-        playerIsReady = true;
-        console.log("Player is Ready");
-    }
-
-    function onPlayerStateChange(event) {
-        if (event.data == YT.PlayerState.PLAYING) {
-            updateTitle();
-        }
-        if (event.data == YT.PlayerState.ENDED) {
-            playNext();
-        }
-    }
-
-    function updateTitle() {
-        try {
-            const videoData = player.getVideoData();
-            if (videoData && videoData.title) {
-                document.getElementById('title').innerText = "🎤 正在播放：" + videoData.title;
-            }
-        } catch (e) {
-            console.log("無法獲取標題");
-        }
     }
 
     function initKTV() {
         document.getElementById('overlay').style.display = 'none';
         
-        // 開始監聽資料庫
+        // 監聽資料庫變動
         db.ref('playlist').orderByChild('timestamp').on('value', (snapshot) => {
             const listUI = document.getElementById('songList');
             const sidebar = document.getElementById('sidebar');
             listUI.innerHTML = '';
-            currentSongs = [];
+            const newSongs = [];
 
             snapshot.forEach((childSnapshot) => {
                 const data = childSnapshot.val();
-                currentSongs.push({ key: childSnapshot.key, ...data });
+                newSongs.push({ key: childSnapshot.key, ...data });
                 const li = document.createElement('li');
                 li.className = 'song-item';
-                li.innerText = data.title || "未命名歌曲";
+                li.innerText = data.title;
                 listUI.appendChild(li);
             });
 
-            // 顯示浮動清單
-            if (currentSongs.length > 0) {
-                sidebar.classList.add('show');
-                clearTimeout(sidebarTimer);
-                sidebarTimer = setTimeout(() => sidebar.classList.remove('show'), 5000);
+            // 判斷是否需要換歌
+            // 如果新抓到的第一首歌，跟目前正在播的歌不一樣，就換歌
+            if (playerIsReady && newSongs.length > 0) {
+                const currentId = player.getVideoData().video_id;
+                if (currentId !== newSongs[0].ytId) {
+                    player.loadVideoById(newSongs[0].ytId);
+                }
+            } else if (playerIsReady && newSongs.length === 0) {
+                player.stopVideo();
+                document.getElementById('title').innerText = "🎤 清單已空";
             }
 
-            // 檢查是否需要播放
-            checkAndPlay();
+            currentSongs = newSongs;
+
+            // 顯示側邊欄
+            sidebar.classList.add('show');
+            clearTimeout(sidebarTimer);
+            sidebarTimer = setTimeout(() => sidebar.classList.remove('show'), 5000);
         });
     }
 
-    function checkAndPlay() {
-        if (playerIsReady && currentSongs.length > 0) {
-            const state = player.getPlayerState();
-            // 如果目前沒在播，就載入第一首
-            if (state !== YT.PlayerState.PLAYING && state !== YT.PlayerState.BUFFERING) {
-                player.loadVideoById(currentSongs[0].ytId);
-            }
-        }
-    }
-
     function playNext() {
+        // 切歌現在變得超簡單：只要把資料庫第一首歌刪掉
+        // Firebase 的 .on('value') 會自動偵測到變動並執行上面的 loadVideoById
         if (currentSongs.length > 0) {
-            // 1. 取得當前播放歌曲與下一首歌曲的資訊
-            const currentSong = currentSongs[0];
-            const nextSong = currentSongs[1]; // 如果有第二首歌，它就在這裡
-
-            console.log("正在執行切歌...");
-
-            // 2. 立即從資料庫刪除當前這首歌
-            db.ref('playlist/' + currentSong.key).remove().then(() => {
-                console.log("已從資料庫移除：" + currentSong.title);
-                
-                // 3. 關鍵修正：直接檢查下一首是否存在，若有則立即強迫載入
-                if (nextSong) {
-                    console.log("立即強迫載入下一首：" + nextSong.title);
-                    player.stopVideo(); 
-                    player.loadVideoById(nextSong.ytId);
-                } else {
-                    // 如果沒歌了
-                    player.stopVideo();
-                    document.getElementById('title').innerText = "🎤 清單已空";
-                    console.log("清單已空，停止播放");
-                }
-            }).catch((error) => {
-                console.error("刪除失敗:", error);
-            });
+            const songToDelete = currentSongs[0];
+            db.ref('playlist/' + songToDelete.key).remove()
+              .then(() => console.log("切歌成功"))
+              .catch(err => console.error("切歌失敗", err));
         }
     }
 </script>
