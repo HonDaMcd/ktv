@@ -8,9 +8,9 @@
     <style>
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: sans-serif; }
         #main { width: 100vw; height: 100vh; position: relative; }
-        #player { width: 100%; height: 100%; pointer-events: none; } /* 防止誤點播放器 */
+        #player { width: 100%; height: 100%; }
         #title-bar { position: absolute; top: 0; width: 100%; background: rgba(0,0,0,0.6); color: #fff; padding: 15px; font-size: 1.5rem; text-align: center; z-index: 10; }
-        #sidebar { position: absolute; right: -300px; top: 80px; width: 250px; background: rgba(0,0,0,0.8); color: #0f0; padding: 15px; border-radius: 15px 0 0 15px; transition: 0.5s; z-index: 5; box-shadow: -5px 0 15px rgba(0,0,0,0.5); }
+        #sidebar { position: absolute; right: -300px; top: 80px; width: 250px; background: rgba(0,0,0,0.8); color: #0f0; padding: 15px; border-radius: 15px 0 0 15px; transition: 0.5s; z-index: 5; }
         #sidebar.show { right: 0; }
         .song-item { padding: 10px; border-bottom: 1px solid #333; list-style: none; font-size: 1.1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         #controls { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 100; }
@@ -22,11 +22,11 @@
 <body>
 
 <div id="overlay">
-    <button class="start-btn" onclick="initKTV()">🎤 點擊啟動 KTV 系統</button>
+    <button class="start-btn" onclick="initKTV()">🎤 啟動 KTV 系統</button>
 </div>
 
 <div id="main">
-    <div id="title-bar"><span id="title">🎤 系統待機中</span></div>
+    <div id="title-bar"><span id="title">🎤 準備中...</span></div>
     <div id="player"></div>
     <div id="controls">
         <button class="btn-next" onclick="playNext()">⏭️ 切歌 / 下一首</button>
@@ -52,18 +52,25 @@
 
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
-    var player, currentSongs = [], playerIsReady = false, isProcessingNext = false;
+    var player, currentSongs = [], playerIsReady = false;
 
+    // 1. 播放器初始化
     function onYouTubeIframeAPIReady() {
         player = new YT.Player('player', {
             height: '100%', width: '100%',
-            playerVars: { 'autoplay': 1, 'controls': 0, 'rel': 0, 'enablejsapi': 1 },
+            playerVars: { 
+                'autoplay': 1, 
+                'controls': 1, 
+                'enablejsapi': 1,
+                'origin': window.location.origin 
+            },
             events: {
-                'onReady': () => { playerIsReady = true; },
+                'onReady': () => { 
+                    playerIsReady = true; 
+                    console.log("播放器就緒");
+                },
                 'onStateChange': (e) => {
-                    // 播放時抓標題
                     if (e.data == YT.PlayerState.PLAYING) setTimeout(forceSyncTitle, 2000);
-                    // 播完自動下一首
                     if (e.data == YT.PlayerState.ENDED) playNext();
                 },
                 'onError': () => playNext()
@@ -71,78 +78,58 @@
         });
     }
 
-    function forceSyncTitle() {
-        try {
-            const ytTitle = player.getVideoData().title;
-            if (ytTitle && currentSongs.length > 0) {
-                document.getElementById('title').innerText = "🎤 正在播放：" + ytTitle;
-                // 更新資料庫，讓側邊欄同步顯示真名
-                db.ref('playlist/' + currentSongs[0].key).update({ title: ytTitle });
-            }
-        } catch (e) { console.log("暫時無法取得標題"); }
-    }
-
+    // 2. 啟動按鈕點擊後
     function initKTV() {
         document.getElementById('overlay').style.display = 'none';
         
+        // 開始監聽資料庫
         db.ref('playlist').orderByChild('timestamp').on('value', (snapshot) => {
             const listUI = document.getElementById('songList');
             listUI.innerHTML = '';
             const newSongs = [];
-            
             snapshot.forEach((snap) => {
                 const data = snap.val();
                 newSongs.push({ key: snap.key, ...data });
                 const li = document.createElement('li');
                 li.className = 'song-item';
-                // 優先顯示資料庫內的標題，若無則顯示加載中
                 li.innerText = data.title || "🎵 新點播歌曲...";
                 listUI.appendChild(li);
             });
 
-            // 如果正在處理切歌，先跳過監聽邏輯以防衝突
-            if (isProcessingNext) return;
-
+            // 如果原本沒在播，現在有歌了，強制觸發
             if (playerIsReady && newSongs.length > 0) {
-                // 檢查是否需要播放第一首 (例如：目前停止中或影片 ID 不同)
                 const state = player.getPlayerState();
                 if (state !== 1 && state !== 3) {
                     player.loadVideoById(newSongs[0].ytId);
                 }
-            } else if (playerIsReady && newSongs.length === 0) {
-                player.stopVideo();
-                document.getElementById('title').innerText = "🎤 系統待機中";
             }
             currentSongs = newSongs;
         });
     }
 
-    // 徹底修復切歌按鈕
+    // 3. 切歌邏輯
     function playNext() {
-        if (currentSongs.length > 0 && !isProcessingNext) {
-            isProcessingNext = true; // 鎖定狀態
-            const songIdToRemove = currentSongs[0].key;
-            
-            console.log("正在切換下一首...");
+        if (currentSongs.length > 0) {
+            const currentId = currentSongs[0].key;
             player.stopVideo(); 
-
-            // 1. 先從本地陣列移除，防止重複觸發
-            const nextVideo = currentSongs[1];
-            
-            // 2. 執行資料庫刪除
-            db.ref('playlist/' + songIdToRemove).remove().then(() => {
-                isProcessingNext = false; // 解鎖
-                // 3. 如果有下一首，手動強制載入
-                if (nextVideo) {
-                    player.loadVideoById(nextVideo.ytId);
-                }
-            }).catch((err) => {
-                isProcessingNext = false;
-                console.error("刪除失敗", err);
-            });
+            db.ref('playlist/' + currentId).remove();
+            // 刪除後，Firebase 的 on('value') 會自動觸發加載下一首
         }
     }
-</script>
+
+    // 4. 強制同步標題
+    function forceSyncTitle() {
+        try {
+            const ytTitle = player.getVideoData().title;
+            if (ytTitle && currentSongs.length > 0) {
+                document.getElementById('title').innerText = "🎤 正在播放：" + ytTitle;
+                // 更新資料庫名
+                if (currentSongs[0].title !== ytTitle) {
+                    db.ref('playlist/' + currentSongs[0].key).update({ title: ytTitle });
+                }
+            }
+        } catch (e) {}
+    }
 </script>
 </body>
 </html>
