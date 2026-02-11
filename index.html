@@ -152,9 +152,30 @@
 
     function playNext() {
         if (currentSongs.length > 0) {
-            const songToRemove = currentSongs[0];
-            db.ref('playlist/' + songToRemove.key).remove();
-            // 刪除後 Firebase onValue 會觸發 checkAndPlay
+            // 1. 取得當前播放歌曲與下一首歌曲的資訊
+            const currentSong = currentSongs[0];
+            const nextSong = currentSongs[1]; // 如果有第二首歌，它就在這裡
+
+            console.log("正在執行切歌...");
+
+            // 2. 立即從資料庫刪除當前這首歌
+            db.ref('playlist/' + currentSong.key).remove().then(() => {
+                console.log("已從資料庫移除：" + currentSong.title);
+                
+                // 3. 關鍵修正：直接檢查下一首是否存在，若有則立即強迫載入
+                if (nextSong) {
+                    console.log("立即強迫載入下一首：" + nextSong.title);
+                    player.stopVideo(); 
+                    player.loadVideoById(nextSong.ytId);
+                } else {
+                    // 如果沒歌了
+                    player.stopVideo();
+                    document.getElementById('title').innerText = "🎤 清單已空";
+                    console.log("清單已空，停止播放");
+                }
+            }).catch((error) => {
+                console.error("刪除失敗:", error);
+            });
         }
     }
 </script>
