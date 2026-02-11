@@ -11,6 +11,7 @@
         .card { background: #1e1e1e; padding: 30px 20px; border-radius: 20px; }
         input { width: 90%; padding: 15px; margin: 15px 0; border: none; border-radius: 10px; background: #333; color: white; font-size: 18px; }
         .send-btn { width: 95%; padding: 18px; border-radius: 10px; border: none; font-size: 20px; font-weight: bold; background: #00c853; color: white; margin-top: 10px; }
+        p { color: #888; font-size: 14px; }
     </style>
 </head>
 <body>
@@ -19,7 +20,7 @@
         <input type="text" id="songTitle" placeholder="選填：你想顯示的歌名">
         <input type="text" id="ytId" placeholder="必填：在此貼上 YouTube 網址">
         <button class="send-btn" onclick="sendSong()">✅ 確認點歌</button>
-        <p style="font-size: 14px; color: #888; margin-top: 20px;">貼上網址後，系統會自動辨識影片資訊</p>
+        <p>貼上網址後，系統會自動辨識影片資訊</p>
     </div>
 
     <script>
@@ -42,24 +43,40 @@
         }
 
         function sendSong() {
-    let title = document.getElementById('songTitle').value.trim();
-    let id = extractId(document.getElementById('ytId').value);
+            let titleInput = document.getElementById('songTitle').value.trim();
+            let id = extractId(document.getElementById('ytId').value);
 
-    if (!id || id.length !== 11) return alert("請貼上正確的網址喔！");
-    
-    // 核心修正：如果沒填，就傳送空字串，不要給預設值
-    if (!title) title = ""; 
+            if (!id || id.length !== 11) return alert("請貼上正確的 YouTube 網址！");
 
-    db.ref('playlist').push({
-        title: title, 
-        ytId: id,
-        timestamp: Date.now()
-    }).then(() => {
-        alert("點歌成功！");
-        document.getElementById('ytId').value = '';
-        document.getElementById('songTitle').value = '';
-    });
-}
+            // 如果使用者有填歌名，直接送出；沒填則自動辨識
+            if (titleInput) {
+                pushToFirebase(titleInput, id);
+            } else {
+                // 自動向 YouTube 取得標題 (不需 Key 的公開介面)
+                const fetchUrl = `https://noembed.com/embed?url=https://www.youtube.com/watch?v=${id}`;
+                fetch(fetchUrl)
+                    .then(res => res.json())
+                    .then(data => {
+                        const autoTitle = data.title || "未知歌曲";
+                        pushToFirebase(autoTitle, id);
+                    })
+                    .catch(() => {
+                        pushToFirebase("新點播歌曲", id);
+                    });
+            }
+        }
+
+        function pushToFirebase(finalTitle, ytId) {
+            db.ref('playlist').push({
+                title: finalTitle,
+                ytId: ytId,
+                timestamp: Date.now()
+            }).then(() => {
+                alert("點歌成功！");
+                document.getElementById('ytId').value = '';
+                document.getElementById('songTitle').value = '';
+            });
+        }
     </script>
 </body>
 </html>

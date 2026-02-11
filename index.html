@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>家庭 KTV 旗艦版 - 側邊欄修復</title>
+    <title>家庭 KTV 旗艦版</title>
     <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-database-compat.js"></script>
     <style>
@@ -15,28 +15,23 @@
             position: absolute; top: 0; width: 100%; 
             background: rgba(0,0,0,0.7); color: #fff; 
             padding: 15px; font-size: 1.5rem; text-align: center; 
-            z-index: 999; /* 提高層級 */
+            z-index: 999; 
         }
 
-        /* 側邊欄：強制置頂並修正位置 */
+        /* 側邊欄 */
         #sidebar { 
             position: absolute; right: -320px; top: 80px; width: 280px; 
             background: rgba(15, 15, 15, 0.95); color: #00ff88; 
             padding: 20px; border-radius: 20px 0 0 20px; 
             transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1); 
-            z-index: 1000; /* 必須高於所有元件 */
+            z-index: 1000; 
             box-shadow: -10px 0 30px rgba(0,0,0,0.8);
             border: 1px solid #333;
         }
         #sidebar.show { right: 0px; }
-        
-        .song-item { 
-            padding: 12px; border-bottom: 1px solid #222; 
-            list-style: none; font-size: 1.1rem; 
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-        }
+        .song-item { padding: 12px; border-bottom: 1px solid #222; list-style: none; font-size: 1.1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-        /* 控制按鈕 */
+        /* 切歌按鈕 */
         #controls { position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%); z-index: 999; }
         .btn-next { padding: 15px 45px; font-size: 1.3rem; cursor: pointer; border-radius: 50px; border: none; background: #ff0055; color: white; font-weight: bold; box-shadow: 0 5px 15px rgba(255,0,85,0.4); }
 
@@ -109,11 +104,11 @@
                 newSongs.push({ key: snap.key, ...data });
                 const li = document.createElement('li');
                 li.className = 'song-item';
-                li.innerText = data.title || "🎵 讀取歌名中...";
+                li.innerText = data.title || "🎵 辨識中...";
                 listUI.appendChild(li);
             });
 
-            // 側邊欄邏輯：只要清單有變動，就彈出來
+            // 如果清單有變動，彈出側邊欄 6 秒
             if (newSongs.length !== currentSongs.length) {
                 sidebar.classList.add('show');
                 clearTimeout(sidebarTimer);
@@ -122,7 +117,7 @@
 
             currentSongs = newSongs;
 
-            // 播放邏輯修正：防止重複加載導致閃動
+            // 自動播放邏輯 (防止閃動)
             if (playerIsReady && currentSongs.length > 0) {
                 const targetId = currentSongs[0].ytId;
                 if (targetId !== lastPlayedId) {
@@ -140,17 +135,17 @@
     function playNext() {
         if (currentSongs.length > 0) {
             const currentKey = currentSongs[0].key;
-            // 刪除資料庫，剩下的交給監聽器自動處理
             db.ref('playlist/' + currentKey).remove();
         }
     }
 
+    // 二次校對：確保資料庫的名字是最準確的正式標題
     function forceSyncTitle() {
         try {
             const ytTitle = player.getVideoData().title;
             if (ytTitle && currentSongs.length > 0) {
                 document.getElementById('title').innerText = "🎤 正在播放：" + ytTitle;
-                // 回寫資料庫，這會再次觸發監聽器，讓側邊欄顯示正確歌名
+                // 如果手機抓到的名字不夠準，電視播放時會幫忙修正資料庫
                 if (currentSongs[0].title !== ytTitle) {
                     db.ref('playlist/' + currentSongs[0].key).update({ title: ytTitle });
                 }
