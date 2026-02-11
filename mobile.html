@@ -65,34 +65,49 @@
             window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(kw + ' KTV')}`, '_blank');
         }
 
-        function extractId(input) {
+        // 請將原本的 extractId 替換成這個
+function extractId(input) {
+    // 1. 先處理純 ID 的情況 (長度 11 且不含特殊符號)
+    const trimmed = input.trim();
+    if (trimmed.length === 11 && !trimmed.includes('/') && !trimmed.includes('?')) {
+        return trimmed;
+    }
+
+    // 2. 處理各種 YouTube 網址格式
     const regExp = /^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?))\??v?=?([^#&?]*).*/;
     const match = input.match(regExp);
-    return (match && match[7].length == 11) ? match[7] : input.trim();
+    
+    // 如果匹配成功且 ID 長度為 11，返回 ID；否則返回原始輸入的去空白版
+    return (match && match[7].length === 11) ? match[7] : trimmed;
 }
 
-        function sendSong(isPriority) {
-            const title = document.getElementById('songTitle').value;
-            let id = document.getElementById('ytId').value;
-            id = extractId(id); // 提取 ID
+// 確保發送函數有正確調用它
+function sendSong(isPriority) {
+    const title = document.getElementById('songTitle').value;
+    let rawInput = document.getElementById('ytId').value;
+    let id = extractId(rawInput); // 調用上面的新函數
 
-            if (!title || !id) return alert("資訊不完整喔！");
+    if (!title || !id) return alert("資訊不完整喔！");
+    
+    // 如果提取出的 ID 長度不對，提醒使用者
+    if (id.length !== 11) {
+        return alert("影片 ID 格式不正確 (應為 11 碼)，請確認網址是否正確。");
+    }
 
-            // 如果是插播，我們要讓它在資料庫排序靠前
-            const playlistRef = db.ref('playlist');
-            const newSongRef = playlistRef.push();
-            
-            newSongRef.set({
-                title: title,
-                ytId: id,
-                timestamp: isPriority ? Date.now() * -1 : Date.now() // 簡單的排序邏輯
-            }).then(() => {
-                alert("點歌成功！請看電視螢幕");
-                document.getElementById('keyword').value = '';
-                document.getElementById('songTitle').value = '';
-                document.getElementById('ytId').value = '';
-            });
-        }
+    const playlistRef = db.ref('playlist');
+    const newSongRef = playlistRef.push();
+    
+    newSongRef.set({
+        title: title,
+        ytId: id,
+        timestamp: isPriority ? Date.now() * -1 : Date.now()
+    }).then(() => {
+        alert("點歌成功！請看電視螢幕");
+        document.getElementById('keyword').value = '';
+        document.getElementById('songTitle').value = '';
+        document.getElementById('ytId').value = '';
+    });
+}
     </script>
 </body>
 </html>
