@@ -15,6 +15,17 @@
         .btn { padding: 15px 30px; font-size: 20px; cursor: pointer; border-radius: 50px; border: none; margin: 10px; }
         .btn-start { background: #ff0055; color: white; }
         .btn-next { background: #444; color: white; }
+.song-item { 
+    padding: 20px; 
+    border-bottom: 2px solid #333; 
+    color: #00ff00; 
+    font-size: 2rem; /* 讓字體變超大 */
+    font-weight: bold;
+}
+#sidebar h2 {
+    font-size: 2.5rem;
+    text-align: center;
+}
     </style>
 </head>
 <body>
@@ -121,19 +132,25 @@
 
     function playNext() {
         if (currentSongs.length > 0) {
-            // 1. 先抓出目前這首歌的資料
+            // 1. 先把要刪除的那首歌（目前這首）紀錄下來
             const finishedSong = currentSongs[0];
             
-            // 2. 從資料庫刪除它
+            // 2. 從資料庫刪除
             db.ref('playlist/' + finishedSong.key).remove().then(() => {
-                // 3. 關鍵：刪除成功後，立刻檢查有沒有「下一首」，有就直接播
+                console.log("已從資料庫移除：" + finishedSong.title);
+                
+                // 3. 檢查陣列裡是否有下一首歌 (原本的 index 1)
                 if (currentSongs.length > 1) {
                     const nextVideo = currentSongs[1];
+                    console.log("強制切換至下一首：" + nextVideo.title);
+                    
+                    // 核心修正：強制停止目前的，立刻載入新的
+                    player.stopVideo(); 
                     player.loadVideoById(nextVideo.ytId);
-                    console.log("切歌成功，正在播放：" + nextVideo.title);
                 } else {
+                    // 如果沒歌了就停止
                     player.stopVideo();
-                    console.log("清單已空");
+                    console.log("清單已空，停止播放");
                 }
             });
         }
