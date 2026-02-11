@@ -1,3 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>過年 KTV 總部 - 終極穩定版</title>
+    <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-database-compat.js"></script>
+    <style>
+        body { background: #000; color: #fff; font-family: sans-serif; margin: 0; display: flex; height: 100vh; overflow: hidden; }
+        #main { flex: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
+        #sidebar { flex: 1; background: #111; border-left: 2px solid #333; padding: 20px; overflow-y: auto; }
+        #player-container { width: 90%; aspect-ratio: 16/9; background: #222; box-shadow: 0 0 30px rgba(255,0,0,0.2); }
+        .song-item { padding: 15px; border-bottom: 1px solid #222; color: #0f0; font-size: 1.2rem; }
+        #overlay { position: absolute; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.9); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; }
+        .btn { padding: 15px 30px; font-size: 20px; cursor: pointer; border-radius: 50px; border: none; margin: 10px; }
+        .btn-start { background: #ff0055; color: white; }
+        .btn-next { background: #444; color: white; }
+    </style>
+</head>
 <body>
 
 <div id="overlay">
@@ -6,8 +25,6 @@
 </div>
 
 <div id="main">
-    <h1 id="title" style="color: #ff0055; font-size: 2rem; margin-bottom: 10px;">🎤 歡迎點歌</h1>
-    
     <div id="player-container">
         <div id="player"></div>
     </div>
@@ -22,8 +39,7 @@
     <ul id="songList" style="padding: 0;"></ul>
 </div>
 
-<script src="https://www.youtube.com/iframe_api"></script> <script>
-    // ... 你的 firebaseConfig 保持不變 ...
+<script>
     const firebaseConfig = {
   apiKey: "AIzaSyB7FxIh0oUu21zTLxnhOttyN_kL0LiYAPw",
   authDomain: "my-karaoke-5b9e3.firebaseapp.com",
@@ -42,6 +58,11 @@
     var currentSongs = [];
     var playerIsReady = false;
 
+    // 載入 API
+    var tag = document.createElement('script');
+    tag.src = "https://www.youtube.com/iframe_api";
+    document.head.appendChild(tag);
+
     function onYouTubeIframeAPIReady() {
         player = new YT.Player('player', {
             height: '100%',
@@ -49,15 +70,10 @@
             playerVars: { 'autoplay': 1, 'controls': 1, 'enablejsapi': 1 },
             events: {
                 'onReady': () => { playerIsReady = true; },
-                'onStateChange': (e) => {
-                    // 自動抓取 YouTube 標題
-                    if (e.data == YT.PlayerState.PLAYING) {
-                        try {
-                            const realTitle = player.getVideoData().title;
-                            document.getElementById('title').innerText = "🎤 正在播放：" + realTitle;
-                        } catch(err) { console.log("抓不到標題"); }
-                    }
-                    if (e.data == YT.PlayerState.ENDED) playNext();
+                'onStateChange': (e) => { if(e.data == YT.PlayerState.ENDED) playNext(); },
+                'onError': (e) => { 
+                    console.log("Error:", e.data);
+                    // 只有在真的出錯時才跳下一首，不要自動一直跳
                 }
             }
         });
@@ -66,40 +82,44 @@
     function initKTV() {
         document.getElementById('overlay').style.display = 'none';
         
-        // 修正排序：插播的歌（負數 timestamp）會排在最前面
-        db.ref('playlist').orderByChild('timestamp').on('value', (snapshot) => {
+        db.ref('playlist').on('value', (snapshot) => {
+            const data = snapshot.val();
             const listUI = document.getElementById('songList');
             listUI.innerHTML = '';
             currentSongs = [];
 
-            snapshot.forEach((childSnapshot) => {
-                const data = childSnapshot.val();
-                currentSongs.push({ key: childSnapshot.key, ...data });
-                
-                const li = document.createElement('li');
-                li.className = 'song-item';
-                li.innerText = data.title;
-                listUI.appendChild(li);
-            });
+            if (data) {
+                Object.keys(data).forEach(key => {
+                    currentSongs.push({ key: key, ...data[key] });
+                    const li = document.createElement('li');
+                    li.className = 'song-item';
+                    li.innerText = data[key].title;
+                    listUI.appendChild(li);
+                });
 
-            // 如果目前沒在播放且清單有歌，自動啟動
-            if (playerIsReady && currentSongs.length > 0) {
-                const state = player.getPlayerState();
-                if (state !== 1 && state !== 3) {
-                    player.loadVideoById(currentSongs[0].ytId);
+                // 如果目前是空閒狀態，嘗試播第一首
+                if (playerIsReady && player.getPlayerState() !== 1) {
+                    playFirstInQueue();
                 }
             }
         });
     }
 
+    function playFirstInQueue() {
+        if (currentSongs.length > 0) {
+            const next = currentSongs[0];
+            player.loadVideoById(next.ytId);
+            // 注意：這裡我們先不刪除資料庫，等真的播完了或按切歌再刪
+        }
+    }
+
     function playNext() {
         if (currentSongs.length > 0) {
             const finishedSong = currentSongs[0];
-            db.ref('playlist/' + finishedSong.key).remove().then(() => {
-                // 核心修正：移除後，直接抓取最新的 currentSongs[1] (現在變成新清單的第一首)
-                // 這裡 Firebase 的 on('value') 會自動幫我們更新 currentSongs
-                console.log("已切歌");
-            });
+            db.ref('playlist/' + finishedSong.key).remove();
+            // 剩下的邏輯會被 Firebase 的 onValue 觸發
         }
     }
 </script>
+</body>
+</html>
