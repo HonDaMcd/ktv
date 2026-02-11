@@ -66,11 +66,10 @@
         }
 
         function extractId(input) {
-            // 自動過濾網址，提取 ID
-            const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-            const match = input.match(regExp);
-            return (match && match[2].length == 11) ? match[2] : input;
-        }
+    const regExp = /^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?))\??v?=?([^#&?]*).*/;
+    const match = input.match(regExp);
+    return (match && match[7].length == 11) ? match[7] : input.trim();
+}
 
         function sendSong(isPriority) {
             const title = document.getElementById('songTitle').value;
