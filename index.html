@@ -68,6 +68,7 @@
       appId: "1:229614265706:web:06c5e2c498baa7f1b5f113"
     };
 
+    // ... Firebase Config 保持不變 ...
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
     var player, currentSongs = [], playerIsReady = false, sidebarTimer;
@@ -75,22 +76,38 @@
     function onYouTubeIframeAPIReady() {
         player = new YT.Player('player', {
             height: '100%', width: '100%',
-            playerVars: { 'autoplay': 1, 'controls': 1, 'enablejsapi': 1 },
+            playerVars: { 
+                'autoplay': 1, 
+                'controls': 1, 
+                'enablejsapi': 1,
+                'origin': window.location.origin 
+            },
             events: {
-                'onReady': () => { playerIsReady = true; },
+                'onReady': () => { 
+                    playerIsReady = true; 
+                    console.log("播放器就緒");
+                },
                 'onStateChange': (e) => {
+                    // 當影片真正開始播放，抓取標題
                     if (e.data == YT.PlayerState.PLAYING) {
                         const realTitle = player.getVideoData().title;
                         document.getElementById('title').innerText = "🎤 正在播放：" + (realTitle || "載入中...");
                     }
                     if (e.data == YT.PlayerState.ENDED) playNext();
+                },
+                'onError': (e) => {
+                    console.log("播放出錯，代碼：" + e.data);
+                    // 如果這首不能播，2秒後跳下一首
+                    setTimeout(playNext, 2000);
                 }
             }
         });
     }
 
     function initKTV() {
+        // 點擊按鈕後，這會賦予瀏覽器播放聲音的權限
         document.getElementById('overlay').style.display = 'none';
+        
         db.ref('playlist').orderByChild('timestamp').on('value', (snapshot) => {
             const listUI = document.getElementById('songList');
             const sidebar = document.getElementById('sidebar');
@@ -106,13 +123,18 @@
                 listUI.appendChild(li);
             });
 
-            // 觸發清單滑動出現，5秒後消失
-            sidebar.classList.add('show');
-            clearTimeout(sidebarTimer);
-            sidebarTimer = setTimeout(() => sidebar.classList.remove('show'), 5000);
+            // 顯示側邊欄通知
+            if (currentSongs.length > 0) {
+                sidebar.classList.add('show');
+                clearTimeout(sidebarTimer);
+                sidebarTimer = setTimeout(() => sidebar.classList.remove('show'), 5000);
+            }
 
+            // 核心修正：強制檢查播放狀態並啟動
             if (playerIsReady && currentSongs.length > 0) {
-                if (player.getPlayerState() !== 1 && player.getPlayerState() !== 3) {
+                // 如果目前是 未開始(-1)、已停止(0)、已暫停(2) 或 影片資訊(5)
+                const state = player.getPlayerState();
+                if (state !== 1 && state !== 3) {
                     player.loadVideoById(currentSongs[0].ytId);
                 }
             }
@@ -121,14 +143,10 @@
 
     function playNext() {
         if (currentSongs.length > 0) {
-            db.ref('playlist/' + currentSongs[0].key).remove().then(() => {
-                if (currentSongs.length > 1) {
-                    player.stopVideo();
-                    player.loadVideoById(currentSongs[1].ytId);
-                } else {
-                    player.stopVideo();
-                    document.getElementById('title').innerText = "🎤 清單已空";
-                }
+            const finished = currentSongs[0];
+            db.ref('playlist/' + finished.key).remove().then(() => {
+                // 這裡不需要額外動作，Firebase 的 on('value') 會自動觸發上面的啟動邏輯
+                console.log("切歌完成");
             });
         }
     }
