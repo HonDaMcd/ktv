@@ -85,41 +85,44 @@
     function initKTV() {
         document.getElementById('overlay').style.display = 'none';
         
-        // 監聽資料庫變動
+        // 使用 orderByChild 確保排序正確
         db.ref('playlist').orderByChild('timestamp').on('value', (snapshot) => {
             const listUI = document.getElementById('songList');
             const sidebar = document.getElementById('sidebar');
             listUI.innerHTML = '';
-            const newSongs = [];
+            currentSongs = [];
 
             snapshot.forEach((childSnapshot) => {
                 const data = childSnapshot.val();
-                newSongs.push({ key: childSnapshot.key, ...data });
+                currentSongs.push({ key: childSnapshot.key, ...data });
                 const li = document.createElement('li');
                 li.className = 'song-item';
-                li.innerText = data.title;
+                li.innerText = data.title || "未命名歌曲";
                 listUI.appendChild(li);
             });
 
-            // 判斷是否需要換歌
-            // 如果新抓到的第一首歌，跟目前正在播的歌不一樣，就換歌
-            if (playerIsReady && newSongs.length > 0) {
-                const currentId = player.getVideoData().video_id;
-                if (currentId !== newSongs[0].ytId) {
-                    player.loadVideoById(newSongs[0].ytId);
-                }
-            } else if (playerIsReady && newSongs.length === 0) {
-                player.stopVideo();
-                document.getElementById('title').innerText = "🎤 清單已空";
+            // 側邊欄滑動邏輯
+            if (currentSongs.length > 0) {
+                sidebar.classList.add('show');
+                clearTimeout(sidebarTimer);
+                sidebarTimer = setTimeout(() => sidebar.classList.remove('show'), 5000);
             }
 
-            currentSongs = newSongs;
-
-            // 顯示側邊欄
-            sidebar.classList.add('show');
-            clearTimeout(sidebarTimer);
-            sidebarTimer = setTimeout(() => sidebar.classList.remove('show'), 5000);
+            // 觸發播放檢查
+            checkAndPlay();
         });
+    }
+
+    function checkAndPlay() {
+        if (playerIsReady && currentSongs.length > 0) {
+            const state = player.getPlayerState();
+            // 關鍵修正：如果狀態是 -1 (未開始), 0 (結束), 2 (暫停), 5 (影片提示) 
+            // 只要不是正在播 (1) 或 緩衝中 (3)，就強制 load 第一首
+            if (state !== 1 && state !== 3) {
+                console.log("偵測到清單有歌，強制啟動播放器...");
+                player.loadVideoById(currentSongs[0].ytId);
+            }
+        }
     }
 
     function playNext() {
