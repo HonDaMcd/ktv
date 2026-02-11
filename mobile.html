@@ -3,28 +3,46 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>手機點歌遙控器</title>
+    <title>KTV 點歌遙控器</title>
     <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-database-compat.js"></script>
     <style>
-        body { font-family: sans-serif; background: #f4f4f4; padding: 20px; text-align: center; }
-        input { width: 80%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; }
-        button { width: 85%; padding: 15px; background: #e91e63; color: white; border: none; border-radius: 5px; font-size: 16px; margin-top: 10px; }
-        .hint { color: #666; font-size: 12px; margin-top: 20px; }
+        body { font-family: sans-serif; background: #121212; color: white; padding: 20px; text-align: center; }
+        .card { background: #1e1e1e; padding: 20px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        input { width: 90%; padding: 12px; margin: 10px 0; border: none; border-radius: 8px; background: #333; color: white; font-size: 16px; }
+        .search-btn { background: #ff0000; color: white; font-weight: bold; }
+        .send-btn { background: #00c853; color: white; font-weight: bold; margin-top: 20px; }
+        .priority-btn { background: #ffab00; color: white; font-weight: bold; }
+        button { width: 95%; padding: 15px; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; margin: 5px 0; }
+        .steps { text-align: left; font-size: 13px; color: #aaa; margin-top: 20px; line-height: 1.6; }
     </style>
 </head>
 <body>
-    <h2>🎤 點歌遙控器</h2>
-    <input type="text" id="songTitle" placeholder="輸入歌名 (例如：周杰倫 告白氣球)">
-    <input type="text" id="ytId" placeholder="貼上 YouTube 影片 ID (網址 v= 後面那串)">
-    <button onclick="sendSong(false)">一般點歌</button>
-    <button onclick="sendSong(true)" style="background: #9c27b0;">插播 (下一首播)</button>
 
-    <p class="hint">註：目前需手動輸入 ID，稍後可優化為自動搜尋</p>
+    <div class="card">
+        <h2>🎤 點歌遙控器</h2>
+        
+        <input type="text" id="keyword" placeholder="第一步：輸入歌名 (如: 告白氣球)">
+        <button class="search-btn" onclick="openSearch()">🔍 先在 YouTube 搜尋影片</button>
+        
+        <hr style="margin: 20px 0; border: 0.5px solid #444;">
+
+        <input type="text" id="songTitle" placeholder="第二步：確認歌名">
+        <input type="text" id="ytId" placeholder="第三步：貼上影片 ID 或網址">
+        
+        <button class="send-btn" onclick="sendSong(false)">✅ 確認點歌</button>
+        <button class="priority-btn" onclick="sendSong(true)">🔥 我要插播</button>
+
+        <div class="steps">
+            <strong>使用說明：</strong><br>
+            1. 輸入歌名後按紅色搜尋鈕，會跳轉到 YouTube。<br>
+            2. 找到想唱的影片，**複製網址**。<br>
+            3. 回到這裡貼上網址，按下綠色點歌鈕即可！
+        </div>
+    </div>
 
     <script>
-        // *** 這裡請貼上跟 index.html 一模一樣的 firebaseConfig ***
-        const firebaseConfig = {
+        // *** 請確保這裡的 firebaseConfig 跟你的 index.html 一模一樣 ***
         const firebaseConfig = {
   apiKey: "AIzaSyB7FxIh0oUu21zTLxnhOttyN_kL0LiYAPw",
   authDomain: "my-karaoke-5b9e3.firebaseapp.com",
@@ -39,18 +57,39 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
+        // 自動跳轉 YouTube 搜尋
+        function openSearch() {
+            const kw = document.getElementById('keyword').value;
+            if(!kw) return alert("請先輸入歌名喔！");
+            document.getElementById('songTitle').value = kw; // 順便幫他填好歌名
+            window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(kw + ' KTV')}`, '_blank');
+        }
+
+        function extractId(input) {
+            // 自動過濾網址，提取 ID
+            const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+            const match = input.match(regExp);
+            return (match && match[2].length == 11) ? match[2] : input;
+        }
+
         function sendSong(isPriority) {
             const title = document.getElementById('songTitle').value;
-            const id = document.getElementById('ytId').value;
+            let id = document.getElementById('ytId').value;
+            id = extractId(id); // 提取 ID
 
-            if (!title || !id) return alert("歌名跟 ID 都要填喔！");
+            if (!title || !id) return alert("資訊不完整喔！");
 
-            const newSongRef = db.ref('playlist').push();
+            // 如果是插播，我們要讓它在資料庫排序靠前
+            const playlistRef = db.ref('playlist');
+            const newSongRef = playlistRef.push();
+            
             newSongRef.set({
                 title: title,
-                ytId: id
+                ytId: id,
+                timestamp: isPriority ? Date.now() * -1 : Date.now() // 簡單的排序邏輯
             }).then(() => {
-                alert("點歌成功！");
+                alert("點歌成功！請看電視螢幕");
+                document.getElementById('keyword').value = '';
                 document.getElementById('songTitle').value = '';
                 document.getElementById('ytId').value = '';
             });
