@@ -15,6 +15,17 @@
         .btn { padding: 15px 30px; font-size: 20px; cursor: pointer; border-radius: 50px; border: none; margin: 10px; }
         .btn-start { background: #ff0055; color: white; }
         .btn-next { background: #444; color: white; }
+.song-item { 
+    padding: 20px; 
+    border-bottom: 2px solid #333; 
+    color: #00ff00; 
+    font-size: 2rem; /* 讓字體變超大 */
+    font-weight: bold;
+}
+#sidebar h2 {
+    font-size: 2.5rem;
+    text-align: center;
+}
     </style>
 </head>
 <body>
@@ -114,35 +125,30 @@
     }
 
     function playNext() {
-    if (currentSongs.length > 0) {
-        const finishedSong = currentSongs[0];
-        
-        db.ref('playlist/' + finishedSong.key).remove().then(() => {
-            if (currentSongs.length > 1) {
-                const nextVideo = currentSongs[1];
-                player.stopVideo(); 
-                player.loadVideoById(nextVideo.ytId);
-
-                // --- 新增：自動抓取 YouTube 標題並顯示在畫面上 ---
-                setTimeout(() => {
-                    try {
-                        const realTitle = player.getVideoData().title;
-                        if (realTitle) {
-                            document.getElementById('title').innerText = "🎤 正在播放：" + realTitle;
-                        }
-                    } catch (e) {
-                        console.log("暫時抓不到標題");
-                    }
-                }, 2000); // 等待 2 秒確保影片資訊已載入
-                // ------------------------------------------
-
-            } else {
-                player.stopVideo();
-                document.getElementById('title').innerText = "🎤 清單已空，請點歌";
-            }
-        });
+        if (currentSongs.length > 0) {
+            // 1. 先把要刪除的那首歌（目前這首）紀錄下來
+            const finishedSong = currentSongs[0];
+            
+            // 2. 從資料庫刪除
+            db.ref('playlist/' + finishedSong.key).remove().then(() => {
+                console.log("已從資料庫移除：" + finishedSong.title);
+                
+                // 3. 檢查陣列裡是否有下一首歌 (原本的 index 1)
+                if (currentSongs.length > 1) {
+                    const nextVideo = currentSongs[1];
+                    console.log("強制切換至下一首：" + nextVideo.title);
+                    
+                    // 核心修正：強制停止目前的，立刻載入新的
+                    player.stopVideo(); 
+                    player.loadVideoById(nextVideo.ytId);
+                } else {
+                    // 如果沒歌了就停止
+                    player.stopVideo();
+                    console.log("清單已空，停止播放");
+                }
+            });
+        }
     }
-}
 </script>
 </body>
 </html>
