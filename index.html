@@ -2,24 +2,31 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>過年 KTV 總部</title>
+    <title>過年 KTV 總部 - 穩定版</title>
     <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-database-compat.js"></script>
     <style>
         body { background: #1a1a1a; color: white; font-family: sans-serif; display: flex; margin: 0; height: 100vh; }
-        #main { flex: 3; padding: 20px; text-align: center; }
+        #main { flex: 3; padding: 20px; text-align: center; background: black; }
         #sidebar { flex: 1; background: #252525; padding: 20px; border-left: 1px solid #444; }
-        #player { width: 100%; aspect-ratio: 16/9; background: #000; }
-        .song-item { padding: 10px; border-bottom: 1px solid #333; list-style: none; color: #00ff00; }
+        #player { width: 100%; aspect-ratio: 16/9; background: #333; }
+        .song-item { padding: 10px; border-bottom: 1px solid #333; list-style: none; color: #ffeb3b; }
+        #overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; z-index: 100; }
+        .start-btn { padding: 20px 40px; font-size: 24px; cursor: pointer; background: #e91e63; color: white; border: none; border-radius: 10px; }
     </style>
 </head>
 <body>
 
+<div id="overlay">
+    <button class="start-btn" onclick="startSystem()">點擊此處啟動 KTV 系統</button>
+</div>
+
 <div id="main">
-    <h1>🎤 我們的家庭 KTV</h1>
+    <h1 id="title">🎤 系統待機中...</h1>
     <div id="player"></div>
-    <br>
-    <button onclick="playNext()" style="padding:10px 20px; font-size:18px; cursor:pointer;">下一首 (切歌)</button>
+    <div style="margin-top: 20px;">
+        <button onclick="playNext()" style="padding:10px 20px; font-size:18px;">下一首 (切歌)</button>
+    </div>
 </div>
 
 <div id="sidebar">
@@ -28,7 +35,6 @@
 </div>
 
 <script>
-    // 根據你的截圖精確填寫的設定
     const firebaseConfig = {
   apiKey: "AIzaSyB7FxIh0oUu21zTLxnhOttyN_kL0LiYAPw",
   authDomain: "my-karaoke-5b9e3.firebaseapp.com",
@@ -39,53 +45,69 @@
   appId: "1:229614265706:web:06c5e2c498baa7f1b5f113",
   measurementId: "G-1YVK3HE4VK"
 };
-
-    // 初始化 Firebase
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    // YouTube 播放器設定
+    var player;
+    var currentSongs = [];
+    var isPlayerReady = false;
+
+    // 載入 YouTube API
     var tag = document.createElement('script');
     tag.src = "https://www.youtube.com/iframe_api";
     document.head.appendChild(tag);
 
-    var player;
-    var currentSongs = [];
-
     function onYouTubeIframeAPIReady() {
         player = new YT.Player('player', {
-            events: { 'onStateChange': (e) => { if(e.data == 0) playNext(); } }
+            height: '100%',
+            width: '100%',
+            playerVars: { 
+                'autoplay': 1, 
+                'controls': 1, 
+                'rel': 0,
+                'origin': window.location.origin 
+            },
+            events: {
+                'onReady': () => { isPlayerReady = true; console.log("播放器準備好了！"); },
+                'onStateChange': (e) => { if(e.data == 0) playNext(); },
+                'onError': (e) => { console.log("YouTube 報錯碼:", e.data); playNext(); }
+            }
         });
     }
 
-    // 核心：監聽資料庫
-    db.ref('playlist').on('value', (snapshot) => {
-        const data = snapshot.val();
-        const listUI = document.getElementById('songList');
-        listUI.innerHTML = '';
-        currentSongs = [];
+    function startSystem() {
+        document.getElementById('overlay').style.display = 'none';
+        document.getElementById('title').innerText = "🎤 我們的家庭 KTV";
+        
+        // 啟動監聽
+        db.ref('playlist').on('value', (snapshot) => {
+            const data = snapshot.val();
+            const listUI = document.getElementById('songList');
+            listUI.innerHTML = '';
+            currentSongs = [];
 
-        if (data) {
-            Object.keys(data).forEach(key => {
-                currentSongs.push({ key: key, ...data[key] });
-                const li = document.createElement('li');
-                li.className = 'song-item';
-                li.innerText = data[key].title;
-                listUI.appendChild(li);
-            });
+            if (data) {
+                Object.keys(data).forEach(key => {
+                    currentSongs.push({ key: key, ...data[key] });
+                    const li = document.createElement('li');
+                    li.className = 'song-item';
+                    li.innerText = data[key].title;
+                    listUI.appendChild(li);
+                });
 
-            // 如果目前沒在播放且清單有歌，就播第一首
-            if (player && player.getPlayerState && player.getPlayerState() !== 1) {
-                playNext();
+                // 如果目前沒在播，就嘗試播下一首
+                if (isPlayerReady && player.getPlayerState() !== 1 && player.getPlayerState() !== 3) {
+                    playNext();
+                }
             }
-        }
-    });
+        });
+    }
 
     function playNext() {
         if (currentSongs.length > 0) {
             const next = currentSongs[0];
+            console.log("正在嘗試播放 ID:", next.ytId);
             player.loadVideoById(next.ytId);
-            // 播放後從資料庫刪除，避免重複播放
             db.ref('playlist/' + next.key).remove();
         }
     }
