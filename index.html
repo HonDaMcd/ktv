@@ -121,9 +121,21 @@
 
     function playNext() {
         if (currentSongs.length > 0) {
+            // 1. 先抓出目前這首歌的資料
             const finishedSong = currentSongs[0];
-            db.ref('playlist/' + finishedSong.key).remove();
-            // 剩下的邏輯會被 Firebase 的 onValue 觸發
+            
+            // 2. 從資料庫刪除它
+            db.ref('playlist/' + finishedSong.key).remove().then(() => {
+                // 3. 關鍵：刪除成功後，立刻檢查有沒有「下一首」，有就直接播
+                if (currentSongs.length > 1) {
+                    const nextVideo = currentSongs[1];
+                    player.loadVideoById(nextVideo.ytId);
+                    console.log("切歌成功，正在播放：" + nextVideo.title);
+                } else {
+                    player.stopVideo();
+                    console.log("清單已空");
+                }
+            });
         }
     }
 </script>
