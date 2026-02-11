@@ -7,43 +7,36 @@
     <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-database-compat.js"></script>
     <style>
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: sans-serif; }
-        
-        /* 影片全螢幕 */
         #main { width: 100vw; height: 100vh; position: relative; }
         #player { width: 100%; height: 100%; }
-
-        /* 標題浮動在上方 */
         #title-bar { 
             position: absolute; top: 0; width: 100%; 
-            background: rgba(0,0,0,0.5); color: #fff; 
+            background: rgba(0,0,0,0.6); color: #fff; 
             padding: 15px; font-size: 1.5rem; text-align: center; z-index: 10;
         }
-
-        /* 右側浮動清單：預設隱藏，有變動才浮現 */
         #sidebar { 
             position: absolute; right: -300px; top: 80px; width: 250px; 
             background: rgba(0,0,0,0.8); color: #0f0; padding: 15px; 
             border-radius: 15px 0 0 15px; transition: 0.5s; z-index: 5;
+            box-shadow: -5px 0 15px rgba(0,0,0,0.5);
         }
         #sidebar.show { right: 0; }
-        .song-item { padding: 8px; border-bottom: 1px solid #333; list-style: none; font-size: 1.1rem; }
-
-        /* 控制按鈕：懸浮在底部 */
-        #controls { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 10; opacity: 0.3; transition: 0.5s; }
-        #controls:hover { opacity: 1; }
-        .btn-next { padding: 12px 30px; font-size: 1.2rem; cursor: pointer; border-radius: 30px; border: none; background: #ff0055; color: white; box-shadow: 0 0 15px rgba(255,0,85,0.5); }
-
+        .song-item { padding: 10px; border-bottom: 1px solid #333; list-style: none; font-size: 1.1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        #controls { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 10; opacity: 0; transition: 0.5s; }
+        #main:hover #controls { opacity: 1; }
+        .btn-next { padding: 15px 40px; font-size: 1.2rem; cursor: pointer; border-radius: 50px; border: none; background: #ff0055; color: white; font-weight: bold; }
         #overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: #000; display: flex; justify-content: center; align-items: center; z-index: 100; }
+        .start-btn { padding: 25px 50px; font-size: 28px; cursor: pointer; border-radius: 15px; background: #ff0055; color: white; border: none; }
     </style>
 </head>
 <body>
 
 <div id="overlay">
-    <button style="padding: 20px 40px; font-size: 24px; cursor: pointer; border-radius: 10px;" onclick="initKTV()">🎤 點擊開啟 KTV 系統</button>
+    <button class="start-btn" onclick="initKTV()">🎤 點擊啟動 KTV 系統</button>
 </div>
 
 <div id="main">
-    <div id="title-bar"><span id="title">🎤 準備點歌...</span></div>
+    <div id="title-bar"><span id="title">🎤 系統待機中，請從手機點歌</span></div>
     <div id="player"></div>
     <div id="controls">
         <button class="btn-next" onclick="playNext()">⏭️ 切歌 / 下一首</button>
@@ -51,13 +44,12 @@
 </div>
 
 <div id="sidebar">
-    <h3 style="margin: 0 0 10px 0; color: #ff0055;">待播清單</h3>
+    <h3 style="margin: 0 0 10px 0; color: #ff0055; border-bottom: 1px solid #ff0055;">待播清單</h3>
     <ul id="songList" style="padding: 0; margin: 0;"></ul>
 </div>
 
 <script src="https://www.youtube.com/iframe_api"></script>
 <script>
-    // 請確認此 Config 與你的 Firebase 一致
     const firebaseConfig = {
       apiKey: "AIzaSyB7FxIh0oUu21zTLxnhOttyN_kL0LiYAPw",
       authDomain: "my-karaoke-5b9e3.firebaseapp.com",
@@ -68,46 +60,59 @@
       appId: "1:229614265706:web:06c5e2c498baa7f1b5f113"
     };
 
-    // ... Firebase Config 保持不變 ...
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
     var player, currentSongs = [], playerIsReady = false, sidebarTimer;
 
+    // 1. YouTube API 準備就緒時觸發
     function onYouTubeIframeAPIReady() {
         player = new YT.Player('player', {
-            height: '100%', width: '100%',
+            height: '100%',
+            width: '100%',
             playerVars: { 
                 'autoplay': 1, 
                 'controls': 1, 
-                'enablejsapi': 1,
-                'origin': window.location.origin 
+                'rel': 0, 
+                'showinfo': 0,
+                'enablejsapi': 1 
             },
             events: {
-                'onReady': () => { 
-                    playerIsReady = true; 
-                    console.log("播放器就緒");
-                },
-                'onStateChange': (e) => {
-                    // 當影片真正開始播放，抓取標題
-                    if (e.data == YT.PlayerState.PLAYING) {
-                        const realTitle = player.getVideoData().title;
-                        document.getElementById('title').innerText = "🎤 正在播放：" + (realTitle || "載入中...");
-                    }
-                    if (e.data == YT.PlayerState.ENDED) playNext();
-                },
-                'onError': (e) => {
-                    console.log("播放出錯，代碼：" + e.data);
-                    // 如果這首不能播，2秒後跳下一首
-                    setTimeout(playNext, 2000);
-                }
+                'onReady': onPlayerReady,
+                'onStateChange': onPlayerStateChange,
+                'onError': (e) => { console.log("YT Error:", e.data); playNext(); }
             }
         });
     }
 
+    function onPlayerReady(event) {
+        playerIsReady = true;
+        console.log("Player is Ready");
+    }
+
+    function onPlayerStateChange(event) {
+        if (event.data == YT.PlayerState.PLAYING) {
+            updateTitle();
+        }
+        if (event.data == YT.PlayerState.ENDED) {
+            playNext();
+        }
+    }
+
+    function updateTitle() {
+        try {
+            const videoData = player.getVideoData();
+            if (videoData && videoData.title) {
+                document.getElementById('title').innerText = "🎤 正在播放：" + videoData.title;
+            }
+        } catch (e) {
+            console.log("無法獲取標題");
+        }
+    }
+
     function initKTV() {
-        // 點擊按鈕後，這會賦予瀏覽器播放聲音的權限
         document.getElementById('overlay').style.display = 'none';
         
+        // 開始監聽資料庫
         db.ref('playlist').orderByChild('timestamp').on('value', (snapshot) => {
             const listUI = document.getElementById('songList');
             const sidebar = document.getElementById('sidebar');
@@ -119,35 +124,37 @@
                 currentSongs.push({ key: childSnapshot.key, ...data });
                 const li = document.createElement('li');
                 li.className = 'song-item';
-                li.innerText = data.title;
+                li.innerText = data.title || "未命名歌曲";
                 listUI.appendChild(li);
             });
 
-            // 顯示側邊欄通知
+            // 顯示浮動清單
             if (currentSongs.length > 0) {
                 sidebar.classList.add('show');
                 clearTimeout(sidebarTimer);
                 sidebarTimer = setTimeout(() => sidebar.classList.remove('show'), 5000);
             }
 
-            // 核心修正：強制檢查播放狀態並啟動
-            if (playerIsReady && currentSongs.length > 0) {
-                // 如果目前是 未開始(-1)、已停止(0)、已暫停(2) 或 影片資訊(5)
-                const state = player.getPlayerState();
-                if (state !== 1 && state !== 3) {
-                    player.loadVideoById(currentSongs[0].ytId);
-                }
-            }
+            // 檢查是否需要播放
+            checkAndPlay();
         });
+    }
+
+    function checkAndPlay() {
+        if (playerIsReady && currentSongs.length > 0) {
+            const state = player.getPlayerState();
+            // 如果目前沒在播，就載入第一首
+            if (state !== YT.PlayerState.PLAYING && state !== YT.PlayerState.BUFFERING) {
+                player.loadVideoById(currentSongs[0].ytId);
+            }
+        }
     }
 
     function playNext() {
         if (currentSongs.length > 0) {
-            const finished = currentSongs[0];
-            db.ref('playlist/' + finished.key).remove().then(() => {
-                // 這裡不需要額外動作，Firebase 的 on('value') 會自動觸發上面的啟動邏輯
-                console.log("切歌完成");
-            });
+            const songToRemove = currentSongs[0];
+            db.ref('playlist/' + songToRemove.key).remove();
+            // 刪除後 Firebase onValue 會觸發 checkAndPlay
         }
     }
 </script>
