@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>過年 KTV 總部</title>
+    <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-database-compat.js"></script>
+    <style>
+        body { background: #1a1a1a; color: white; font-family: sans-serif; display: flex; margin: 0; height: 100vh; }
+        #main { flex: 3; padding: 20px; text-align: center; }
+        #sidebar { flex: 1; background: #252525; padding: 20px; border-left: 1px solid #444; }
+        #player { width: 100%; aspect-ratio: 16/9; background: #000; }
+        .song-item { padding: 10px; border-bottom: 1px solid #333; list-style: none; color: #00ff00; }
+    </style>
+</head>
+<body>
+
+<div id="main">
+    <h1>🎤 我們的家庭 KTV</h1>
+    <div id="player"></div>
+    <br>
+    <button onclick="playNext()" style="padding:10px 20px; font-size:18px; cursor:pointer;">下一首 (切歌)</button>
+</div>
+
+<div id="sidebar">
+    <h3>待播清單</h3>
+    <ul id="songList"></ul>
+</div>
+
+<script>
+    // 根據你的截圖精確填寫的設定
+    const firebaseConfig = {
+  apiKey: "AIzaSyB7FxIh0oUu21zTLxnhOttyN_kL0LiYAPw",
+  authDomain: "my-karaoke-5b9e3.firebaseapp.com",
+  databaseURL: "https://my-karaoke-5b9e3-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "my-karaoke-5b9e3",
+  storageBucket: "my-karaoke-5b9e3.firebasestorage.app",
+  messagingSenderId: "229614265706",
+  appId: "1:229614265706:web:06c5e2c498baa7f1b5f113",
+  measurementId: "G-1YVK3HE4VK"
+};
+
+    // 初始化 Firebase
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    // YouTube 播放器設定
+    var tag = document.createElement('script');
+    tag.src = "https://www.youtube.com/iframe_api";
+    document.head.appendChild(tag);
+
+    var player;
+    var currentSongs = [];
+
+    function onYouTubeIframeAPIReady() {
+        player = new YT.Player('player', {
+            events: { 'onStateChange': (e) => { if(e.data == 0) playNext(); } }
+        });
+    }
+
+    // 核心：監聽資料庫
+    db.ref('playlist').on('value', (snapshot) => {
+        const data = snapshot.val();
+        const listUI = document.getElementById('songList');
+        listUI.innerHTML = '';
+        currentSongs = [];
+
+        if (data) {
+            Object.keys(data).forEach(key => {
+                currentSongs.push({ key: key, ...data[key] });
+                const li = document.createElement('li');
+                li.className = 'song-item';
+                li.innerText = data[key].title;
+                listUI.appendChild(li);
+            });
+
+            // 如果目前沒在播放且清單有歌，就播第一首
+            if (player && player.getPlayerState && player.getPlayerState() !== 1) {
+                playNext();
+            }
+        }
+    });
+
+    function playNext() {
+        if (currentSongs.length > 0) {
+            const next = currentSongs[0];
+            player.loadVideoById(next.ytId);
+            // 播放後從資料庫刪除，避免重複播放
+            db.ref('playlist/' + next.key).remove();
+        }
+    }
+</script>
+</body>
+</html>

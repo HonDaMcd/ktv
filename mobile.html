@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>手機點歌遙控器</title>
+    <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-database-compat.js"></script>
+    <style>
+        body { font-family: sans-serif; background: #f4f4f4; padding: 20px; text-align: center; }
+        input { width: 80%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; }
+        button { width: 85%; padding: 15px; background: #e91e63; color: white; border: none; border-radius: 5px; font-size: 16px; margin-top: 10px; }
+        .hint { color: #666; font-size: 12px; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <h2>🎤 點歌遙控器</h2>
+    <input type="text" id="songTitle" placeholder="輸入歌名 (例如：周杰倫 告白氣球)">
+    <input type="text" id="ytId" placeholder="貼上 YouTube 影片 ID (網址 v= 後面那串)">
+    <button onclick="sendSong(false)">一般點歌</button>
+    <button onclick="sendSong(true)" style="background: #9c27b0;">插播 (下一首播)</button>
+
+    <p class="hint">註：目前需手動輸入 ID，稍後可優化為自動搜尋</p>
+
+    <script>
+        // *** 這裡請貼上跟 index.html 一模一樣的 firebaseConfig ***
+        const firebaseConfig = {
+        const firebaseConfig = {
+  apiKey: "AIzaSyB7FxIh0oUu21zTLxnhOttyN_kL0LiYAPw",
+  authDomain: "my-karaoke-5b9e3.firebaseapp.com",
+  databaseURL: "https://my-karaoke-5b9e3-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "my-karaoke-5b9e3",
+  storageBucket: "my-karaoke-5b9e3.firebasestorage.app",
+  messagingSenderId: "229614265706",
+  appId: "1:229614265706:web:06c5e2c498baa7f1b5f113",
+  measurementId: "G-1YVK3HE4VK"
+};
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        function sendSong(isPriority) {
+            const title = document.getElementById('songTitle').value;
+            const id = document.getElementById('ytId').value;
+
+            if (!title || !id) return alert("歌名跟 ID 都要填喔！");
+
+            const newSongRef = db.ref('playlist').push();
+            newSongRef.set({
+                title: title,
+                ytId: id
+            }).then(() => {
+                alert("點歌成功！");
+                document.getElementById('songTitle').value = '';
+                document.getElementById('ytId').value = '';
+            });
+        }
+    </script>
+</body>
+</html>
