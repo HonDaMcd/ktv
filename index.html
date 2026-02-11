@@ -114,12 +114,35 @@
     }
 
     function playNext() {
-        if (currentSongs.length > 0) {
-            const finishedSong = currentSongs[0];
-            db.ref('playlist/' + finishedSong.key).remove();
-            // 剩下的邏輯會被 Firebase 的 onValue 觸發
-        }
+    if (currentSongs.length > 0) {
+        const finishedSong = currentSongs[0];
+        
+        db.ref('playlist/' + finishedSong.key).remove().then(() => {
+            if (currentSongs.length > 1) {
+                const nextVideo = currentSongs[1];
+                player.stopVideo(); 
+                player.loadVideoById(nextVideo.ytId);
+
+                // --- 新增：自動抓取 YouTube 標題並顯示在畫面上 ---
+                setTimeout(() => {
+                    try {
+                        const realTitle = player.getVideoData().title;
+                        if (realTitle) {
+                            document.getElementById('title').innerText = "🎤 正在播放：" + realTitle;
+                        }
+                    } catch (e) {
+                        console.log("暫時抓不到標題");
+                    }
+                }, 2000); // 等待 2 秒確保影片資訊已載入
+                // ------------------------------------------
+
+            } else {
+                player.stopVideo();
+                document.getElementById('title').innerText = "🎤 清單已空，請點歌";
+            }
+        });
     }
+}
 </script>
 </body>
 </html>
