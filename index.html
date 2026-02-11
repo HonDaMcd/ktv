@@ -2,36 +2,41 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>過年 KTV 總部 - 穩定版</title>
+    <title>過年 KTV 總部 - 終極穩定版</title>
     <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-database-compat.js"></script>
     <style>
-        body { background: #1a1a1a; color: white; font-family: sans-serif; display: flex; margin: 0; height: 100vh; }
-        #main { flex: 3; padding: 20px; text-align: center; background: black; }
-        #sidebar { flex: 1; background: #252525; padding: 20px; border-left: 1px solid #444; }
-        #player { width: 100%; aspect-ratio: 16/9; background: #333; }
-        .song-item { padding: 10px; border-bottom: 1px solid #333; list-style: none; color: #ffeb3b; }
-        #overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; z-index: 100; }
-        .start-btn { padding: 20px 40px; font-size: 24px; cursor: pointer; background: #e91e63; color: white; border: none; border-radius: 10px; }
+        body { background: #000; color: #fff; font-family: sans-serif; margin: 0; display: flex; height: 100vh; overflow: hidden; }
+        #main { flex: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
+        #sidebar { flex: 1; background: #111; border-left: 2px solid #333; padding: 20px; overflow-y: auto; }
+        #player-container { width: 90%; aspect-ratio: 16/9; background: #222; box-shadow: 0 0 30px rgba(255,0,0,0.2); }
+        .song-item { padding: 15px; border-bottom: 1px solid #222; color: #0f0; font-size: 1.2rem; }
+        #overlay { position: absolute; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.9); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; }
+        .btn { padding: 15px 30px; font-size: 20px; cursor: pointer; border-radius: 50px; border: none; margin: 10px; }
+        .btn-start { background: #ff0055; color: white; }
+        .btn-next { background: #444; color: white; }
     </style>
 </head>
 <body>
 
 <div id="overlay">
-    <button class="start-btn" onclick="startSystem()">點擊此處啟動 KTV 系統</button>
+    <h1 style="color: #ff0055; font-size: 3rem; margin-bottom: 30px;">🎤 KTV 準備就緒</h1>
+    <button class="btn btn-start" onclick="initKTV()">點擊開始新年歌友會</button>
 </div>
 
 <div id="main">
-    <h1 id="title">🎤 系統待機中...</h1>
-    <div id="player"></div>
+    <div id="player-container">
+        <div id="player"></div>
+    </div>
     <div style="margin-top: 20px;">
-        <button onclick="playNext()" style="padding:10px 20px; font-size:18px;">下一首 (切歌)</button>
+        <button class="btn btn-next" onclick="playNext()">⏭️ 切歌 / 下一首</button>
+        <button class="btn btn-next" style="background:#222" onclick="location.reload()">🔄 重新整理系統</button>
     </div>
 </div>
 
 <div id="sidebar">
-    <h3>待播清單</h3>
-    <ul id="songList"></ul>
+    <h2 style="color: #ff0055;">待播清單</h2>
+    <ul id="songList" style="padding: 0;"></ul>
 </div>
 
 <script>
@@ -45,14 +50,16 @@
   appId: "1:229614265706:web:06c5e2c498baa7f1b5f113",
   measurementId: "G-1YVK3HE4VK"
 };
+
+
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
     var player;
     var currentSongs = [];
-    var isPlayerReady = false;
+    var playerIsReady = false;
 
-    // 載入 YouTube API
+    // 載入 API
     var tag = document.createElement('script');
     tag.src = "https://www.youtube.com/iframe_api";
     document.head.appendChild(tag);
@@ -61,25 +68,21 @@
         player = new YT.Player('player', {
             height: '100%',
             width: '100%',
-            playerVars: { 
-                'autoplay': 1, 
-                'controls': 1, 
-                'rel': 0,
-                'origin': window.location.origin 
-            },
+            playerVars: { 'autoplay': 1, 'controls': 1, 'enablejsapi': 1 },
             events: {
-                'onReady': () => { isPlayerReady = true; console.log("播放器準備好了！"); },
-                'onStateChange': (e) => { if(e.data == 0) playNext(); },
-                'onError': (e) => { console.log("YouTube 報錯碼:", e.data); playNext(); }
+                'onReady': () => { playerIsReady = true; },
+                'onStateChange': (e) => { if(e.data == YT.PlayerState.ENDED) playNext(); },
+                'onError': (e) => { 
+                    console.log("Error:", e.data);
+                    // 只有在真的出錯時才跳下一首，不要自動一直跳
+                }
             }
         });
     }
 
-    function startSystem() {
+    function initKTV() {
         document.getElementById('overlay').style.display = 'none';
-        document.getElementById('title').innerText = "🎤 我們的家庭 KTV";
         
-        // 啟動監聽
         db.ref('playlist').on('value', (snapshot) => {
             const data = snapshot.val();
             const listUI = document.getElementById('songList');
@@ -95,20 +98,27 @@
                     listUI.appendChild(li);
                 });
 
-                // 如果目前沒在播，就嘗試播下一首
-                if (isPlayerReady && player.getPlayerState() !== 1 && player.getPlayerState() !== 3) {
-                    playNext();
+                // 如果目前是空閒狀態，嘗試播第一首
+                if (playerIsReady && player.getPlayerState() !== 1) {
+                    playFirstInQueue();
                 }
             }
         });
     }
 
-    function playNext() {
+    function playFirstInQueue() {
         if (currentSongs.length > 0) {
             const next = currentSongs[0];
-            console.log("正在嘗試播放 ID:", next.ytId);
             player.loadVideoById(next.ytId);
-            db.ref('playlist/' + next.key).remove();
+            // 注意：這裡我們先不刪除資料庫，等真的播完了或按切歌再刪
+        }
+    }
+
+    function playNext() {
+        if (currentSongs.length > 0) {
+            const finishedSong = currentSongs[0];
+            db.ref('playlist/' + finishedSong.key).remove();
+            // 剩下的邏輯會被 Firebase 的 onValue 觸發
         }
     }
 </script>
