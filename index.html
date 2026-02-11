@@ -2,58 +2,122 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>KTV 點歌</title>
+    <title>家庭 KTV 旗艦版</title>
     <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-database-compat.js"></script>
     <style>
-        body { font-family: sans-serif; background: #121212; color: white; padding: 20px; text-align: center; }
-        .card { background: #1e1e1e; padding: 30px 20px; border-radius: 20px; }
-        input { width: 90%; padding: 15px; margin: 15px 0; border: none; border-radius: 10px; background: #333; color: white; font-size: 18px; }
-        .send-btn { width: 95%; padding: 18px; border-radius: 10px; border: none; font-size: 20px; font-weight: bold; background: #00c853; color: white; margin-top: 10px; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: sans-serif; }
+        #main { width: 100vw; height: 100vh; position: relative; }
+        #player { width: 100%; height: 100%; pointer-events: none; } /* 防止誤點播放器 */
+        #title-bar { position: absolute; top: 0; width: 100%; background: rgba(0,0,0,0.6); color: #fff; padding: 15px; font-size: 1.5rem; text-align: center; z-index: 10; }
+        #sidebar { position: absolute; right: -300px; top: 80px; width: 250px; background: rgba(0,0,0,0.8); color: #0f0; padding: 15px; border-radius: 15px 0 0 15px; transition: 0.5s; z-index: 5; box-shadow: -5px 0 15px rgba(0,0,0,0.5); }
+        #sidebar.show { right: 0; }
+        .song-item { padding: 10px; border-bottom: 1px solid #333; list-style: none; font-size: 1.1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        #controls { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 100; }
+        .btn-next { padding: 15px 40px; font-size: 1.2rem; cursor: pointer; border-radius: 50px; border: none; background: #ff0055; color: white; font-weight: bold; }
+        #overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: #000; display: flex; justify-content: center; align-items: center; z-index: 1000; }
+        .start-btn { padding: 25px 50px; font-size: 28px; cursor: pointer; border-radius: 15px; background: #ff0055; color: white; border: none; }
     </style>
 </head>
 <body>
-    <div class="card">
-        <h2>🎤 點歌遙控器</h2>
-        <input type="text" id="songTitle" placeholder="選填：你想顯示的歌名">
-        <input type="text" id="ytId" placeholder="必填：在此貼上 YouTube 網址">
-        <button class="send-btn" onclick="sendSong()">✅ 確認點歌</button>
+
+<div id="overlay">
+    <button class="start-btn" onclick="initKTV()">🎤 點擊啟動 KTV 系統</button>
+</div>
+
+<div id="main">
+    <div id="title-bar"><span id="title">🎤 系統待機中</span></div>
+    <div id="player"></div>
+    <div id="controls">
+        <button class="btn-next" onclick="playNext()">⏭️ 切歌 / 下一首</button>
     </div>
+</div>
 
-    <script>
-        const firebaseConfig = {
-          apiKey: "AIzaSyB7FxIh0oUu21zTLxnhOttyN_kL0LiYAPw",
-          authDomain: "my-karaoke-5b9e3.firebaseapp.com",
-          databaseURL: "https://my-karaoke-5b9e3-default-rtdb.asia-southeast1.firebasedatabase.app",
-          projectId: "my-karaoke-5b9e3",
-          messagingSenderId: "229614265706",
-          appId: "1:229614265706:web:06c5e2c498baa7f1b5f113"
-        };
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.database();
+<div id="sidebar">
+    <h3 style="margin: 0 0 10px 0; color: #ff0055; border-bottom: 1px solid #ff0055;">待播清單</h3>
+    <ul id="songList" style="padding: 0; margin: 0;"></ul>
+</div>
 
-        function extractId(input) {
-            const regExp = /^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?))\??v?=?([^#&?]*).*/;
-            const match = input.match(regExp);
-            return (match && match[7].length === 11) ? match[7] : input.trim();
-        }
+<script src="https://www.youtube.com/iframe_api"></script>
+<script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyB7FxIh0oUu21zTLxnhOttyN_kL0LiYAPw",
+      authDomain: "my-karaoke-5b9e3.firebaseapp.com",
+      databaseURL: "https://my-karaoke-5b9e3-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "my-karaoke-5b9e3",
+      storageBucket: "my-karaoke-5b9e3.firebasestorage.app",
+      messagingSenderId: "229614265706",
+      appId: "1:229614265706:web:06c5e2c498baa7f1b5f113"
+    };
 
-        function sendSong() {
-            let title = document.getElementById('songTitle').value.trim();
-            let id = extractId(document.getElementById('ytId').value);
-            if (!id || id.length !== 11) return alert("請貼上正確網址");
-            
-            db.ref('playlist').push({
-                title: title, // 如果是空的，電視端會自動補
-                ytId: id,
-                timestamp: Date.now()
-            }).then(() => {
-                alert("點歌成功！");
-                document.getElementById('ytId').value = '';
-                document.getElementById('songTitle').value = '';
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    var player, currentSongs = [], playerIsReady = false;
+
+    function onYouTubeIframeAPIReady() {
+        player = new YT.Player('player', {
+            height: '100%', width: '100%',
+            playerVars: { 'autoplay': 1, 'controls': 0, 'rel': 0, 'enablejsapi': 1 },
+            events: {
+                'onReady': () => { playerIsReady = true; },
+                'onStateChange': (e) => {
+                    if (e.data == YT.PlayerState.PLAYING) setTimeout(forceSyncTitle, 2000);
+                    if (e.data == YT.PlayerState.ENDED) playNext();
+                },
+                'onError': () => playNext() // 報錯就跳過
+            }
+        });
+    }
+
+    // 強制同步標題：不管資料庫原本寫什麼，一律改為 YT 抓到的名字
+    function forceSyncTitle() {
+        try {
+            const ytTitle = player.getVideoData().title;
+            if (ytTitle && currentSongs.length > 0) {
+                document.getElementById('title').innerText = "🎤 正在播放：" + ytTitle;
+                // 更新資料庫，讓側邊欄同步
+                db.ref('playlist/' + currentSongs[0].key).update({ title: ytTitle });
+            }
+        } catch (e) { console.log("抓不到標題"); }
+    }
+
+    function initKTV() {
+        document.getElementById('overlay').style.display = 'none';
+        db.ref('playlist').orderByChild('timestamp').on('value', (snapshot) => {
+            const listUI = document.getElementById('songList');
+            listUI.innerHTML = '';
+            const newSongs = [];
+            snapshot.forEach((snap) => {
+                const data = snap.val();
+                newSongs.push({ key: snap.key, ...data });
+                const li = document.createElement('li');
+                li.className = 'song-item';
+                li.innerText = data.title || "點播加載中...";
+                listUI.appendChild(li);
             });
+
+            // 如果換歌了或清單變動
+            if (playerIsReady && newSongs.length > 0) {
+                const isNewVideo = currentSongs.length === 0 || newSongs[0].ytId !== currentSongs[0].ytId;
+                if (isNewVideo) {
+                    player.loadVideoById(newSongs[0].ytId);
+                }
+            } else if (playerIsReady && newSongs.length === 0) {
+                player.stopVideo();
+                document.getElementById('title').innerText = "🎤 系統待機中";
+            }
+            currentSongs = newSongs;
+        });
+    }
+
+    function playNext() {
+        if (currentSongs.length > 0) {
+            // 切歌關鍵：先停止當前影片，再移除資料庫
+            player.stopVideo(); 
+            const songId = currentSongs[0].key;
+            db.ref('playlist/' + songId).remove();
         }
-    </script>
+    }
+</script>
 </body>
 </html>
