@@ -42,24 +42,24 @@
         }
 
         function sendSong() {
-            let title = document.getElementById('songTitle').value;
-            let id = extractId(document.getElementById('ytId').value);
+    let title = document.getElementById('songTitle').value.trim();
+    let id = extractId(document.getElementById('ytId').value);
 
-            if (!id || id.length !== 11) return alert("請貼上正確的網址喔！");
-            
-            // 如果沒填歌名，電視端會自動顯示 YT 官方標題，這裡給個預設名稱
-            if (!title) title = "新點播歌曲";
+    if (!id || id.length !== 11) return alert("請貼上正確的網址喔！");
+    
+    // 核心修正：如果沒填，就傳送空字串，不要給預設值
+    if (!title) title = ""; 
 
-            db.ref('playlist').push({
-                title: title,
-                ytId: id,
-                timestamp: Date.now()
-            }).then(() => {
-                alert("點歌成功！");
-                document.getElementById('ytId').value = '';
-                document.getElementById('songTitle').value = '';
-            });
-        }
+    db.ref('playlist').push({
+        title: title, 
+        ytId: id,
+        timestamp: Date.now()
+    }).then(() => {
+        alert("點歌成功！");
+        document.getElementById('ytId').value = '';
+        document.getElementById('songTitle').value = '';
+    });
+}
     </script>
 </body>
 </html>

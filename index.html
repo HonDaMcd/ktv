@@ -7,13 +7,19 @@
     <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-database-compat.js"></script>
     <style>
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: sans-serif; }
+        
+        /* 影片全螢幕 */
         #main { width: 100vw; height: 100vh; position: relative; }
         #player { width: 100%; height: 100%; }
+
+        /* 上方標題列 */
         #title-bar { 
             position: absolute; top: 0; width: 100%; 
             background: rgba(0,0,0,0.6); color: #fff; 
             padding: 15px; font-size: 1.5rem; text-align: center; z-index: 10;
         }
+
+        /* 右側浮動清單 */
         #sidebar { 
             position: absolute; right: -300px; top: 80px; width: 250px; 
             background: rgba(0,0,0,0.8); color: #0f0; padding: 15px; 
@@ -22,9 +28,13 @@
         }
         #sidebar.show { right: 0; }
         .song-item { padding: 10px; border-bottom: 1px solid #333; list-style: none; font-size: 1.1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        /* 下方切歌按鈕 */
         #controls { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 10; opacity: 0; transition: 0.5s; }
         #main:hover #controls { opacity: 1; }
-        .btn-next { padding: 15px 40px; font-size: 1.2rem; cursor: pointer; border-radius: 50px; border: none; background: #ff0055; color: white; font-weight: bold; }
+        .btn-next { padding: 15px 40px; font-size: 1.2rem; cursor: pointer; border-radius: 50px; border: none; background: #ff0055; color: white; font-weight: bold; box-shadow: 0 0 15px rgba(255,0,85,0.5); }
+
+        /* 啟動遮罩 */
         #overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: #000; display: flex; justify-content: center; align-items: center; z-index: 100; }
         .start-btn { padding: 25px 50px; font-size: 28px; cursor: pointer; border-radius: 15px; background: #ff0055; color: white; border: none; }
     </style>
@@ -50,6 +60,7 @@
 
 <script src="https://www.youtube.com/iframe_api"></script>
 <script>
+    // Firebase 設定
     const firebaseConfig = {
       apiKey: "AIzaSyB7FxIh0oUu21zTLxnhOttyN_kL0LiYAPw",
       authDomain: "my-karaoke-5b9e3.firebaseapp.com",
@@ -60,79 +71,106 @@
       appId: "1:229614265706:web:06c5e2c498baa7f1b5f113"
     };
 
-    // ... Firebase Config 保持不變 ...
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
     var player, currentSongs = [], playerIsReady = false, sidebarTimer;
 
+    // YouTube 播放器初始化
     function onYouTubeIframeAPIReady() {
         player = new YT.Player('player', {
-            height: '100%', width: '100%',
-            playerVars: { 'autoplay': 1, 'controls': 1, 'enablejsapi': 1 },
+            height: '100%',
+            width: '100%',
+            playerVars: { 
+                'autoplay': 1, 
+                'controls': 1, 
+                'rel': 0, 
+                'enablejsapi': 1 
+            },
             events: {
                 'onReady': () => { playerIsReady = true; },
-                'onStateChange': (e) => {
-                    if (e.data == YT.PlayerState.PLAYING) {
-                        const realTitle = player.getVideoData().title;
-                        document.getElementById('title').innerText = "🎤 正在播放：" + (realTitle || "載入中...");
-                    }
-                    if (e.data == YT.PlayerState.ENDED) playNext();
-                }
+                'onStateChange': onPlayerStateChange,
+                'onError': () => playNext() // 遇到不能播的歌自動跳過
             }
         });
+    }
+
+    // 播放狀態改變時的處理
+    function onPlayerStateChange(event) {
+        if (event.data == YT.PlayerState.PLAYING) {
+            // 影片開始播放後，延遲 1.5 秒抓取正確標題並回填資料庫
+            setTimeout(updateTitle, 1500);
+        }
+        if (event.data == YT.PlayerState.ENDED) {
+            playNext(); // 播完自動下一首
+        }
+    }
+
+    // 智慧抓取標題函數
+    function updateTitle() {
+        try {
+            const videoData = player.getVideoData();
+            if (videoData && videoData.title) {
+                const realTitle = videoData.title;
+                document.getElementById('title').innerText = "🎤 正在播放：" + realTitle;
+
+                // 如果資料庫裡的歌名是預設值或空的，自動更新它
+                if (currentSongs.length > 0) {
+                    const current = currentSongs[0];
+                    if (!current.title || current.title === "新點播歌曲" || current.title === "") {
+                        db.ref('playlist/' + current.key).update({ title: realTitle });
+                    }
+                }
+            }
+        } catch (e) { console.log("抓不到標題"); }
     }
 
     function initKTV() {
         document.getElementById('overlay').style.display = 'none';
         
-        // 使用 orderByChild 確保排序正確
+        // 監聽 Firebase 資料
         db.ref('playlist').orderByChild('timestamp').on('value', (snapshot) => {
             const listUI = document.getElementById('songList');
             const sidebar = document.getElementById('sidebar');
             listUI.innerHTML = '';
-            currentSongs = [];
+            const newSongs = [];
 
             snapshot.forEach((childSnapshot) => {
                 const data = childSnapshot.val();
-                currentSongs.push({ key: childSnapshot.key, ...data });
+                newSongs.push({ key: childSnapshot.key, ...data });
                 const li = document.createElement('li');
                 li.className = 'song-item';
-                li.innerText = data.title || "未命名歌曲";
+                li.innerText = data.title || "載入中...";
                 listUI.appendChild(li);
             });
 
-            // 側邊欄滑動邏輯
+            // 檢查是否需要啟動播放
+            if (playerIsReady && newSongs.length > 0) {
+                const state = player.getPlayerState();
+                // 如果目前沒在播，或新抓到的第一首歌跟目前播的不一樣，就載入新歌
+                if (state !== 1 && state !== 3) {
+                    player.loadVideoById(newSongs[0].ytId);
+                }
+            } else if (playerIsReady && newSongs.length === 0) {
+                player.stopVideo();
+                document.getElementById('title').innerText = "🎤 清單已空";
+            }
+
+            currentSongs = newSongs;
+
+            // 側邊清單浮現邏輯
             if (currentSongs.length > 0) {
                 sidebar.classList.add('show');
                 clearTimeout(sidebarTimer);
                 sidebarTimer = setTimeout(() => sidebar.classList.remove('show'), 5000);
             }
-
-            // 觸發播放檢查
-            checkAndPlay();
         });
     }
 
-    function checkAndPlay() {
-        if (playerIsReady && currentSongs.length > 0) {
-            const state = player.getPlayerState();
-            // 關鍵修正：如果狀態是 -1 (未開始), 0 (結束), 2 (暫停), 5 (影片提示) 
-            // 只要不是正在播 (1) 或 緩衝中 (3)，就強制 load 第一首
-            if (state !== 1 && state !== 3) {
-                console.log("偵測到清單有歌，強制啟動播放器...");
-                player.loadVideoById(currentSongs[0].ytId);
-            }
-        }
-    }
-
     function playNext() {
-        // 切歌現在變得超簡單：只要把資料庫第一首歌刪掉
-        // Firebase 的 .on('value') 會自動偵測到變動並執行上面的 loadVideoById
         if (currentSongs.length > 0) {
-            const songToDelete = currentSongs[0];
-            db.ref('playlist/' + songToDelete.key).remove()
-              .then(() => console.log("切歌成功"))
-              .catch(err => console.error("切歌失敗", err));
+            const songToRemove = currentSongs[0];
+            // 只要刪除資料庫，Firebase 的監聽器就會自動啟動下一首
+            db.ref('playlist/' + songToRemove.key).remove();
         }
     }
 </script>
