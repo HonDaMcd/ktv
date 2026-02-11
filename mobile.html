@@ -79,29 +79,25 @@ function extractId(input) {
 
 // 確保發送函數有正確調用它
 function sendSong(isPriority) {
-    const title = document.getElementById('songTitle').value;
+    let title = document.getElementById('songTitle').value;
     let rawInput = document.getElementById('ytId').value;
-    let id = extractId(rawInput); // 調用上面的新函數
+    let id = extractId(rawInput);
 
-    if (!title || !id) return alert("資訊不完整喔！");
-    
-    // 如果提取出的 ID 長度不對，提醒使用者
-    if (id.length !== 11) {
-        return alert("影片 ID 格式不正確 (應為 11 碼)，請確認網址是否正確。");
-    }
+    if (!id) return alert("請貼上網址");
+    if (!title) title = "新點播歌曲"; // 如果沒填就給預設值
 
-    const playlistRef = db.ref('playlist');
-    const newSongRef = playlistRef.push();
-    
-    newSongRef.set({
+    // 插播邏輯：插播給予負數時間戳，一般點歌給正數，讓 Firebase 自動排序
+    const songData = {
         title: title,
         ytId: id,
         timestamp: isPriority ? Date.now() * -1 : Date.now()
-    }).then(() => {
-        alert("點歌成功！請看電視螢幕");
-        document.getElementById('keyword').value = '';
-        document.getElementById('songTitle').value = '';
+    };
+
+    // 往資料庫送資料
+    db.ref('playlist').push(songData).then(() => {
+        alert(isPriority ? "🚀 插播成功！下一首就是你" : "✅ 點歌成功！");
         document.getElementById('ytId').value = '';
+        document.getElementById('songTitle').value = '';
     });
 }
     </script>

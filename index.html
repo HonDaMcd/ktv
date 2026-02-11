@@ -62,6 +62,7 @@
   measurementId: "G-1YVK3HE4VK"
 };
 
+    // ... 你的 Firebase Config 保持不變 ...
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
@@ -69,28 +70,21 @@
     var currentSongs = [];
     var playerIsReady = false;
 
-    // 載入 API
-    var tag = document.createElement('script');
-    tag.src = "https://www.youtube.com/iframe_api";
-    document.head.appendChild(tag);
-
     function onYouTubeIframeAPIReady() {
         player = new YT.Player('player', {
             height: '100%',
             width: '100%',
-            playerVars: { 
-                'autoplay': 1, 
-                'controls': 1, 
-                'enablejsapi': 1,
-                'rel': 0,
-                'origin': location.origin // 強制指定來源網域
-            },
+            playerVars: { 'autoplay': 1, 'controls': 1, 'enablejsapi': 1 },
             events: {
-                'onReady': () => { playerIsReady = true; console.log("播放器已就緒"); },
-                'onStateChange': (e) => { if(e.data == YT.PlayerState.ENDED) playNext(); },
-                'onError': (e) => { 
-                    console.error("YouTube 錯誤代碼:", e.data);
-                    // 150 代表該影片不允許在嵌入式播放器中播放
+                'onReady': () => { playerIsReady = true; },
+                'onStateChange': (e) => {
+                    // 當影片開始播放，自動抓取 YouTube 標題更新到畫面上
+                    if (e.data == YT.PlayerState.PLAYING) {
+                        const realTitle = player.getVideoData().title;
+                        document.getElementById('title').innerText = "🎤 正在播放：" + realTitle;
+                    }
+                    // 影片結束自動下一首
+                    if (e.data == YT.PlayerState.ENDED) playNext();
                 }
             }
         });
@@ -99,58 +93,42 @@
     function initKTV() {
         document.getElementById('overlay').style.display = 'none';
         
-        db.ref('playlist').on('value', (snapshot) => {
-            const data = snapshot.val();
+        // 使用 orderByChild 確保插播的歌排在前面
+        db.ref('playlist').orderByChild('timestamp').on('value', (snapshot) => {
             const listUI = document.getElementById('songList');
             listUI.innerHTML = '';
             currentSongs = [];
 
-            if (data) {
-                Object.keys(data).forEach(key => {
-                    currentSongs.push({ key: key, ...data[key] });
-                    const li = document.createElement('li');
-                    li.className = 'song-item';
-                    li.innerText = data[key].title;
-                    listUI.appendChild(li);
-                });
+            snapshot.forEach((childSnapshot) => {
+                const data = childSnapshot.val();
+                currentSongs.push({ key: childSnapshot.key, ...data });
+                
+                const li = document.createElement('li');
+                li.className = 'song-item';
+                li.innerText = data.title;
+                listUI.appendChild(li);
+            });
 
-                // 如果目前是空閒狀態，嘗試播第一首
-                if (playerIsReady && player.getPlayerState() !== 1) {
-                    playFirstInQueue();
+            // 如果目前沒在播，自動啟動第一首
+            if (playerIsReady && currentSongs.length > 0) {
+                if (player.getPlayerState() !== 1 && player.getPlayerState() !== 3) {
+                    player.loadVideoById(currentSongs[0].ytId);
                 }
             }
         });
     }
 
-    function playFirstInQueue() {
-        if (currentSongs.length > 0) {
-            const next = currentSongs[0];
-            player.loadVideoById(next.ytId);
-            // 注意：這裡我們先不刪除資料庫，等真的播完了或按切歌再刪
-        }
-    }
-
     function playNext() {
         if (currentSongs.length > 0) {
-            // 1. 先把要刪除的那首歌（目前這首）紀錄下來
             const finishedSong = currentSongs[0];
-            
-            // 2. 從資料庫刪除
+            // 刪除目前這首，Firebase 會自動觸發 initKTV 裡的監聽並播下一首
             db.ref('playlist/' + finishedSong.key).remove().then(() => {
-                console.log("已從資料庫移除：" + finishedSong.title);
-                
-                // 3. 檢查陣列裡是否有下一首歌 (原本的 index 1)
                 if (currentSongs.length > 1) {
-                    const nextVideo = currentSongs[1];
-                    console.log("強制切換至下一首：" + nextVideo.title);
-                    
-                    // 核心修正：強制停止目前的，立刻載入新的
-                    player.stopVideo(); 
-                    player.loadVideoById(nextVideo.ytId);
-                } else {
-                    // 如果沒歌了就停止
                     player.stopVideo();
-                    console.log("清單已空，停止播放");
+                    player.loadVideoById(currentSongs[1].ytId);
+                } else {
+                    player.stopVideo();
+                    document.getElementById('title').innerText = "🎤 清單已空";
                 }
             });
         }
