@@ -51,7 +51,6 @@
   measurementId: "G-1YVK3HE4VK"
 };
 
-
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
@@ -68,13 +67,19 @@
         player = new YT.Player('player', {
             height: '100%',
             width: '100%',
-            playerVars: { 'autoplay': 1, 'controls': 1, 'enablejsapi': 1 },
+            playerVars: { 
+                'autoplay': 1, 
+                'controls': 1, 
+                'enablejsapi': 1,
+                'rel': 0,
+                'origin': location.origin // 強制指定來源網域
+            },
             events: {
-                'onReady': () => { playerIsReady = true; },
+                'onReady': () => { playerIsReady = true; console.log("播放器已就緒"); },
                 'onStateChange': (e) => { if(e.data == YT.PlayerState.ENDED) playNext(); },
                 'onError': (e) => { 
-                    console.log("Error:", e.data);
-                    // 只有在真的出錯時才跳下一首，不要自動一直跳
+                    console.error("YouTube 錯誤代碼:", e.data);
+                    // 150 代表該影片不允許在嵌入式播放器中播放
                 }
             }
         });
