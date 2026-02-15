@@ -31,9 +31,25 @@
         #sidebar.show { right: 0px; }
         .song-item { padding: 12px; border-bottom: 1px solid #222; list-style: none; font-size: 1.1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-        /* 切歌按鈕 */
-        #controls { position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%); z-index: 999; }
-        .btn-next { padding: 15px 45px; font-size: 1.3rem; cursor: pointer; border-radius: 50px; border: none; background: #ff0055; color: white; font-weight: bold; box-shadow: 0 5px 15px rgba(255,0,85,0.4); }
+        /* 【優化重點】切歌按鈕縮小與不透明度控制 */
+        #controls { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 999; }
+        .btn-next { 
+            padding: 8px 25px; 
+            font-size: 1rem; 
+            cursor: pointer; 
+            border-radius: 50px; 
+            border: none; 
+            background: #ff0055; 
+            color: white; 
+            font-weight: bold; 
+            box-shadow: 0 5px 15px rgba(255,0,85,0.4);
+            opacity: 0.2; /* 平時 20% 不透明度 */
+            transition: all 0.3s ease; /* 讓變色過程平滑一點 */
+        }
+        .btn-next:hover { 
+            opacity: 0.8; /* 滑鼠滑過時 80% 不透明度 */
+            transform: scale(1.05); /* 輕微放大提示 */
+        }
 
         #overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: #000; display: flex; justify-content: center; align-items: center; z-index: 9999; }
         .start-btn { padding: 25px 50px; font-size: 28px; cursor: pointer; border-radius: 15px; background: #ff0055; color: white; border: none; }
@@ -49,7 +65,7 @@
     <div id="title-bar"><span id="title">🎤 系統就緒，請點歌</span></div>
     <div id="player"></div>
     <div id="controls">
-        <button class="btn-next" onclick="playNext()">⏭️ 切歌 / 下一首</button>
+        <button class="btn-next" onclick="playNext()">下一首</button>
     </div>
 </div>
 
@@ -108,7 +124,6 @@
                 listUI.appendChild(li);
             });
 
-            // 如果清單有變動，彈出側邊欄 6 秒
             if (newSongs.length !== currentSongs.length) {
                 sidebar.classList.add('show');
                 clearTimeout(sidebarTimer);
@@ -117,7 +132,6 @@
 
             currentSongs = newSongs;
 
-            // 自動播放邏輯 (防止閃動)
             if (playerIsReady && currentSongs.length > 0) {
                 const targetId = currentSongs[0].ytId;
                 if (targetId !== lastPlayedId) {
@@ -139,13 +153,11 @@
         }
     }
 
-    // 二次校對：確保資料庫的名字是最準確的正式標題
     function forceSyncTitle() {
         try {
             const ytTitle = player.getVideoData().title;
             if (ytTitle && currentSongs.length > 0) {
                 document.getElementById('title').innerText = "🎤 正在播放：" + ytTitle;
-                // 如果手機抓到的名字不夠準，電視播放時會幫忙修正資料庫
                 if (currentSongs[0].title !== ytTitle) {
                     db.ref('playlist/' + currentSongs[0].key).update({ title: ytTitle });
                 }
